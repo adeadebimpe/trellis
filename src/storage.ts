@@ -372,6 +372,7 @@ export class AgentBoardStorage {
   private async defaultProjectContext(): Promise<ProjectContext> {
     return {
       version: 1,
+      contextNotes: '',
       overview: 'Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.',
       goals: [],
       architectureNotes: '',

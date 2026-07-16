@@ -104,6 +104,7 @@ export interface ProjectInference {
 
 export interface ProjectContext {
   version: 1;
+  contextNotes: string;
   overview: string;
   goals: string[];
   architectureNotes: string;

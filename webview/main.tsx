@@ -54,6 +54,7 @@ interface Task {
 
 interface ProjectContext {
   version: 1;
+  contextNotes: string;
   overview: string;
   goals: string[];
   architectureNotes: string;
@@ -109,6 +110,8 @@ function App(): JSX.Element {
   const [projectDraft, setProjectDraft] = useState<ProjectContext | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [projectFieldsOpen, setProjectFieldsOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -160,6 +163,10 @@ function App(): JSX.Element {
   useEffect(() => {
     setDraft(selected ? cloneTask(selected) : null);
   }, [selected]);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [selectedId]);
 
   const sendAction = (task: Task, action: string) => {
     vscode.postMessage({ type: 'action', id: task.id, task, action, expectedLastUpdated: task.lastUpdated });
@@ -348,17 +355,59 @@ function App(): JSX.Element {
           </div>
 
           <div className="actions">
-            <Action label="Generate PRD" onClick={() => sendAction(draft, 'generate-spec')} primary />
-            <Action label="Ready for agent" onClick={() => sendAction(draft, 'mark-ready')} />
-            <Action label="Start build" onClick={() => sendAction(draft, 'start-build')} />
-            <Action label="Ready for QA" onClick={() => sendAction(draft, 'mark-ready-qa')} />
-            <Action label="Start QA" onClick={() => sendAction(draft, 'start-qa')} />
-            <Action label="Pass QA" onClick={() => sendAction(draft, 'pass-qa')} />
+            <Action
+              label="Generate PRD"
+              onClick={() => sendAction(draft, 'generate-spec')}
+              primary
+              disabled={!draft.brief.trim()}
+              title={!draft.brief.trim() ? 'Write or paste the task idea in the Brief field first.' : undefined}
+            />
+            <Action
+              label="Ready for agent"
+              onClick={() => sendAction(draft, 'mark-ready')}
+              disabled={draft.status === 'ready-for-agent'}
+              title={draft.status === 'ready-for-agent' ? 'Already ready for agent.' : undefined}
+            />
+            <Action
+              label="Start build"
+              onClick={() => sendAction(draft, 'start-build')}
+              disabled={!(draft.status === 'ready-for-agent' || draft.status === 'building') || draft.assignedAgent === 'unassigned'}
+              title={draft.assignedAgent === 'unassigned'
+                ? 'Assign Claude or Codex first.'
+                : !(draft.status === 'ready-for-agent' || draft.status === 'building')
+                  ? 'Move the task to Ready for Agent first.'
+                  : undefined}
+            />
+            <Action
+              label="Ready for QA"
+              onClick={() => sendAction(draft, 'mark-ready-qa')}
+              disabled={draft.status !== 'building'}
+              title={draft.status !== 'building' ? 'Only building tasks move to Ready for QA.' : undefined}
+            />
+            <Action
+              label="Start QA"
+              onClick={() => sendAction(draft, 'start-qa')}
+              disabled={!(draft.status === 'ready-for-qa' || draft.status === 'failed-qa') || draft.qaAgent === 'unassigned'}
+              title={draft.qaAgent === 'unassigned'
+                ? 'Assign a QA agent first.'
+                : !(draft.status === 'ready-for-qa' || draft.status === 'failed-qa')
+                  ? 'Move the task to Ready for QA first.'
+                  : undefined}
+            />
+            <Action
+              label="Pass QA"
+              onClick={() => sendAction(draft, 'pass-qa')}
+              disabled={draft.status !== 'qa-running'}
+              title={draft.status !== 'qa-running' ? 'QA must be running to pass it.' : undefined}
+            />
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
             )}
             {draft.status === 'human-review' && (
               <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: selected?.lastUpdated })} primary />
+            )}
+            {draft.status === 'human-review' && (
+              <Action label="Mark done" onClick={() => sendAction(draft, 'mark-done')} />
             )}
             {draft.status === 'done' && (
               <Action label="Archive task" onClick={() => vscode.postMessage({ type: 'archive-task', id: draft.id })} />
@@ -385,7 +434,12 @@ function App(): JSX.Element {
           )}
 
           <div className="formGrid">
-            <Field label="Task description" value={draft.brief} onChange={(value) => setDraft({ ...draft, brief: value })} />
+            <Field
+              label="Brief"
+              placeholder="Write or paste the rough idea and any context. Generate PRD turns this into the structured spec below."
+              value={draft.brief}
+              onChange={(value) => setDraft({ ...draft, brief: value })}
+            />
             <Field label="Generated PRD Description" value={draft.description} onChange={(value) => setDraft({ ...draft, description: value })} />
             <ListField label="Acceptance Criteria" value={draft.acceptanceCriteria} onChange={(value) => setDraft({ ...draft, acceptanceCriteria: splitLines(value) })} />
             <ListField label="QA Checklist" value={draft.qaChecklist} onChange={(value) => setDraft({ ...draft, qaChecklist: splitLines(value) })} />
@@ -412,6 +466,7 @@ function App(): JSX.Element {
           <div className="drawerFooter">
             <button
               className="primary"
+              disabled={saveState === 'saving'}
               onClick={() => {
                 setSaveState('saving');
                 vscode.postMessage({ type: 'save-task', task: draft, expectedLastUpdated: selected?.lastUpdated });
@@ -421,14 +476,18 @@ function App(): JSX.Element {
             </button>
             <button
               className="danger"
+              title={confirmDelete ? 'Click again to permanently delete this task.' : undefined}
               onClick={() => {
-                const confirmed = window.confirm(`Delete ${draft.id}? This removes its task JSON file.`);
-                if (confirmed) {
-                  vscode.postMessage({ type: 'delete-task', id: draft.id });
+                // window.confirm is blocked inside VS Code webviews, so confirm in-place.
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  window.setTimeout(() => setConfirmDelete(false), 4000);
+                  return;
                 }
+                vscode.postMessage({ type: 'delete-task', id: draft.id });
               }}
             >
-              Delete Task
+              {confirmDelete ? 'Confirm delete?' : 'Delete Task'}
             </button>
             <p>
               {saveState === 'saved' && 'Saved. '}
@@ -473,9 +532,20 @@ function App(): JSX.Element {
             }}>Close</button>
           </div>
 
+          <div className="contextBlock">
+            <Field
+              label="Project context"
+              big
+              placeholder="Paste anything agents should know before building: product overview, architecture notes, conventions, constraints, links. This goes to PRD generation and is stored in .agent-board/project.json for agents."
+              value={projectDraft.contextNotes ?? ''}
+              onChange={(value) => setProjectDraft({ ...projectDraft, contextNotes: value })}
+            />
+          </div>
+
           <div className="contextActions">
             <button
               className="primary"
+              disabled={projectSaveState === 'saving'}
               onClick={() => {
                 setProjectSaveState('saving');
                 vscode.postMessage({ type: 'infer-project' });
@@ -485,31 +555,39 @@ function App(): JSX.Element {
             </button>
             <button
               className="primary"
+              disabled={projectSaveState === 'saving'}
               onClick={() => {
                 setProjectSaveState('saving');
                 vscode.postMessage({ type: 'save-project', project: projectDraft });
               }}
             >
-              Save context
+              {projectSaveState === 'saving' ? 'Saving...' : 'Save context'}
             </button>
             <p>
-              {projectSaveState === 'saving' && 'Saving... '}
               {projectSaveState === 'saved' && 'Saved. '}
               {projectSaveState === 'error' && 'Save failed. '}
               Last updated {new Date(projectDraft.lastUpdated).toLocaleString()}
             </p>
           </div>
 
-          <div className="formGrid">
-            <Field label="Project Overview" value={projectDraft.overview} onChange={(value) => setProjectDraft({ ...projectDraft, overview: value })} />
-            <ListField label="Project Goals" value={projectDraft.goals} onChange={(value) => setProjectDraft({ ...projectDraft, goals: splitLines(value) })} />
-            <Field label="Architecture Notes" value={projectDraft.architectureNotes} onChange={(value) => setProjectDraft({ ...projectDraft, architectureNotes: value })} />
-            <ListField label="Coding Rules" value={projectDraft.codingRules} onChange={(value) => setProjectDraft({ ...projectDraft, codingRules: splitLines(value) })} />
-            <ListField label="Agent Rules" value={projectDraft.agentRules} onChange={(value) => setProjectDraft({ ...projectDraft, agentRules: splitLines(value) })} />
-            <ListField label="Validation Commands" value={projectDraft.validationCommands} onChange={(value) => setProjectDraft({ ...projectDraft, validationCommands: splitLines(value) })} />
-            <ListField label="Design Rules" value={projectDraft.designRules} onChange={(value) => setProjectDraft({ ...projectDraft, designRules: splitLines(value) })} />
-            <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => setProjectDraft({ ...projectDraft, glossary: splitLines(value) })} />
+          <div className="contextBlock">
+            <ListField label="Validation Commands (used by QA runs, one per line)" value={projectDraft.validationCommands} onChange={(value) => setProjectDraft({ ...projectDraft, validationCommands: splitLines(value) })} />
           </div>
+
+          <button className="sectionToggle" onClick={() => setProjectFieldsOpen((open) => !open)}>
+            {projectFieldsOpen ? '▾' : '▸'} Structured fields (optional)
+          </button>
+          {projectFieldsOpen && (
+            <div className="formGrid">
+              <Field label="Project Overview" value={projectDraft.overview} onChange={(value) => setProjectDraft({ ...projectDraft, overview: value })} />
+              <ListField label="Project Goals" value={projectDraft.goals} onChange={(value) => setProjectDraft({ ...projectDraft, goals: splitLines(value) })} />
+              <Field label="Architecture Notes" value={projectDraft.architectureNotes} onChange={(value) => setProjectDraft({ ...projectDraft, architectureNotes: value })} />
+              <ListField label="Coding Rules" value={projectDraft.codingRules} onChange={(value) => setProjectDraft({ ...projectDraft, codingRules: splitLines(value) })} />
+              <ListField label="Agent Rules" value={projectDraft.agentRules} onChange={(value) => setProjectDraft({ ...projectDraft, agentRules: splitLines(value) })} />
+              <ListField label="Design Rules" value={projectDraft.designRules} onChange={(value) => setProjectDraft({ ...projectDraft, designRules: splitLines(value) })} />
+              <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => setProjectDraft({ ...projectDraft, glossary: splitLines(value) })} />
+            </div>
+          )}
 
           <section className="inferencePanel">
             <h3>Inference</h3>
@@ -525,12 +603,12 @@ function App(): JSX.Element {
   );
 }
 
-function Action({ label, onClick, primary = false }: { label: string; onClick: () => void; primary?: boolean }): JSX.Element {
-  return <button className={`action ${primary ? 'actionPrimary' : ''}`} onClick={onClick}>{label}</button>;
+function Action({ label, onClick, primary = false, disabled = false, title }: { label: string; onClick: () => void; primary?: boolean; disabled?: boolean; title?: string }): JSX.Element {
+  return <button className={`action ${primary ? 'actionPrimary' : ''}`} disabled={disabled} title={title} onClick={onClick}>{label}</button>;
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }): JSX.Element {
-  return <label><span>{label}</span><textarea value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+function Field({ label, value, onChange, placeholder, big = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; big?: boolean }): JSX.Element {
+  return <label><span>{label}</span><textarea className={big ? 'bigInput' : undefined} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function ListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string) => void }): JSX.Element {

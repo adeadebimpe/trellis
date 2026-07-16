@@ -592,6 +592,62 @@ input.textInput {
   padding: 14px 0;
 }
 
+.contextBlock {
+  margin-top: 16px;
+}
+
+.contextBlock label {
+  width: 100%;
+}
+
+.bigInput {
+  min-height: 180px;
+}
+
+textarea::placeholder {
+  color: var(--subtle);
+}
+
+.sectionToggle {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 4px 0 12px;
+  padding: 6px 0;
+  text-align: left;
+  width: 100%;
+}
+
+.sectionToggle:hover {
+  color: var(--text);
+}
+
+.action:disabled,
+.primary:disabled,
+.ghost:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.action:disabled:hover {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.actionPrimary:disabled:hover {
+  background: var(--accent-soft);
+  border-color: rgba(94, 106, 210, 0.35);
+}
+
+.primary:disabled:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .contextActions p {
   color: var(--muted);
   font-size: 12px;

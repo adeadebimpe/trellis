@@ -200,7 +200,10 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           }
           await runStartQaAction(message.id);
         } else {
-          await storage.runAction(message.id, message.action, message.expectedLastUpdated);
+          const saved = message.task
+            ? await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated })
+            : undefined;
+          await storage.runAction(message.id, message.action, saved?.lastUpdated ?? message.expectedLastUpdated);
         }
         await postState();
         break;

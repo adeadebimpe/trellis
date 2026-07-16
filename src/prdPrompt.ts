@@ -56,6 +56,7 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
       existingConstraints: task.constraints,
       relevantFiles: task.relevantFiles,
       projectContext: {
+        contextNotes: project.contextNotes,
         overview: project.overview,
         goals: project.goals,
         architectureNotes: project.architectureNotes,

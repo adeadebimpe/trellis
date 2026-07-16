@@ -1,43 +1,30 @@
 {
   "version": 1,
-  "overview": "Agent Board is a VS Code extension for coordinating AI coding agents through repo-native task files, project context, and workflow instructions.",
-  "goals": [
-    "Make task state visible in VS Code.",
-    "Let Codex and Claude Code claim, build, update, QA, and complete tasks through files.",
-    "Avoid copy-pasted prompts by storing durable task and project context in the repository."
-  ],
-  "architectureNotes": "The extension backend uses the VS Code Extension API and local JSON storage in .agent-board/. The board UI is a React webview bundled with esbuild.",
+  "overview": "Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.",
+  "goals": [],
+  "architectureNotes": "",
   "codingRules": [
-    "Follow existing TypeScript and React patterns in this repository.",
-    "Keep extension backend logic in src/ and webview UI logic in webview/.",
-    "Preserve unknown fields in task and project JSON files.",
-    "Avoid real Claude or Codex API calls until explicitly added as a later integration."
+    "Follow existing project patterns before introducing new abstractions.",
+    "Keep changes scoped to the active Agent Board task.",
+    "Do not overwrite unrelated user or agent changes."
   ],
   "agentRules": [
     "Read .agent-board/project.json before claiming or implementing a task.",
-    "Use the task JSON as the task source of truth.",
-    "Update relevantFiles, agentNotes, activityLog, and lastUpdated as work progresses.",
-    "Run validation commands before moving a task to ready-for-qa."
+    "Use project validationCommands when deciding what to run.",
+    "Record any assumptions in the task activityLog or agentNotes."
   ],
-  "validationCommands": [
-    "npm run compile"
-  ],
-  "designRules": [
-    "The board should feel like an operational command centre for coding agents.",
-    "Prefer dense, scannable controls over marketing-style layout.",
-    "Keep task controls obvious and reduce repeated manual clicks."
-  ],
-  "glossary": [
-    "Agent Board: the VS Code visual board.",
-    ".agent-board/: repo-native source of truth for agents.",
-    "Agent Spec: generated task description, acceptance criteria, QA checklist, and constraints."
-  ],
+  "validationCommands": [],
+  "designRules": [],
+  "glossary": [],
   "inference": {
     "packageManager": "npm",
     "scripts": [
       "build",
       "compile",
       "package",
+      "test",
+      "test:prd",
+      "test:scripts",
       "typecheck",
       "watch"
     ],
@@ -55,11 +42,12 @@
       "React webview"
     ],
     "suggestedValidation": [
+      "npm run build",
       "npm run compile",
-      "npm run typecheck",
-      "npm run build"
+      "npm run test",
+      "npm run typecheck"
     ],
-    "lastInferred": "2026-06-05T21:30:00.000Z"
+    "lastInferred": "2026-07-16T17:31:52.608Z"
   },
-  "lastUpdated": "2026-06-05T21:30:00.000Z"
+  "lastUpdated": "2026-07-16T17:31:52.608Z"
 }
