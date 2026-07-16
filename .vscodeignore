@@ -1,7 +1,9 @@
 .agent-board/**
 .claude/**
 .vscode/**
+dazzle/**
 node_modules/**
+*.vsix
 src/**
 webview/**
 tests/**

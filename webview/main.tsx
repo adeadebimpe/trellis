@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -108,6 +108,7 @@ function App(): JSX.Element {
   const [draft, setDraft] = useState<Task | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectContext | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -160,16 +161,6 @@ function App(): JSX.Element {
     setDraft(selected ? cloneTask(selected) : null);
   }, [selected]);
 
-  const counts = useMemo(() => {
-    const result = { active: 0, ready: 0, qa: 0 };
-    for (const task of state?.tasks ?? []) {
-      if (task.status === 'building') result.active += 1;
-      if (task.status === 'ready-for-agent') result.ready += 1;
-      if (task.status === 'ready-for-qa' || task.status === 'qa-running' || task.status === 'failed-qa') result.qa += 1;
-    }
-    return result;
-  }, [state]);
-
   const sendAction = (task: Task, action: string) => {
     vscode.postMessage({ type: 'action', id: task.id, task, action, expectedLastUpdated: task.lastUpdated });
   };
@@ -208,19 +199,36 @@ function App(): JSX.Element {
           <h1>Agent Board</h1>
         </div>
         <div className="telemetry">
-          <Metric label="Ready" value={counts.ready} />
-          <Metric label="Building" value={counts.active} />
-          <Metric label="QA" value={counts.qa} />
-          <Metric label="PRD" value={state?.settings.specProviderLabel ?? 'Not configured'} />
-          <button className="ghost" onClick={() => {
-            if (state?.project) {
-              setProjectDraft(cloneProject(state.project));
-              setProjectOpen(true);
-            }
-          }}>Project context</button>
-          <button className="ghost" onClick={() => vscode.postMessage({ type: 'sign-in-agents' })}>Agent sign in</button>
-          <button className="ghost expandButton" onClick={() => vscode.postMessage({ type: 'open-full-board' })}>Open full board</button>
-          <button className="ghost" onClick={() => vscode.postMessage({ type: 'fresh-start' })}>Fresh start</button>
+          <div className="menuWrap">
+            <button className="ghost moreButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>⋯</button>
+            {menuOpen && (
+              <>
+                <div className="menuOverlay" onClick={() => setMenuOpen(false)} />
+                <div className="menu" role="menu">
+                  <p className="menuStatus">PRD: {state?.settings.specProviderLabel ?? 'Not configured'}</p>
+                  <button role="menuitem" onClick={() => {
+                    setMenuOpen(false);
+                    if (state?.project) {
+                      setProjectDraft(cloneProject(state.project));
+                      setProjectOpen(true);
+                    }
+                  }}>Project context</button>
+                  <button role="menuitem" onClick={() => {
+                    setMenuOpen(false);
+                    vscode.postMessage({ type: 'sign-in-agents' });
+                  }}>Agent sign in</button>
+                  <button role="menuitem" className="expandButton" onClick={() => {
+                    setMenuOpen(false);
+                    vscode.postMessage({ type: 'open-full-board' });
+                  }}>Open full board</button>
+                  <button role="menuitem" onClick={() => {
+                    setMenuOpen(false);
+                    vscode.postMessage({ type: 'fresh-start' });
+                  }}>Fresh start</button>
+                </div>
+              </>
+            )}
+          </div>
           <button className="primary" onClick={() => vscode.postMessage({ type: 'create-task' })}>New task</button>
         </div>
       </header>
@@ -515,10 +523,6 @@ function App(): JSX.Element {
       )}
     </main>
   );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }): JSX.Element {
-  return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function Action({ label, onClick, primary = false }: { label: string; onClick: () => void; primary?: boolean }): JSX.Element {
