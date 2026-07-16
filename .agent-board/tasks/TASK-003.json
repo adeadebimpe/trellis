@@ -1,0 +1,71 @@
+{
+  "id": "TASK-003",
+  "title": "",
+  "status": "backlog",
+  "priority": "medium",
+  "assignedAgent": "unassigned",
+  "qaAgent": "unassigned",
+  "description": "Define and implement the task scope for TASK-003 in the Agent Board VS Code extension. Because the task title and description are empty, the first responsibility of the implementing agent is to read .agent-board/project.json and .agent-board/tasks/TASK-003.json, infer the intended scope from surrounding tasks and recent activity, and write a concrete title and description back into the task JSON before any code changes. Once scope is captured, implement the change end-to-end across the extension backend (src/) and the React webview (webview/) as appropriate, preserving unknown fields in all .agent-board/ JSON files and updating relevantFiles, agentNotes, activityLog, and lastUpdated as work progresses. No real Claude or Codex API calls may be introduced.",
+  "acceptanceCriteria": [
+    "TASK-003 JSON has a non-empty title and description that accurately reflect the implemented change, committed alongside the code.",
+    "Implementation lives in src/ for extension backend logic and webview/ for UI logic, following existing TypeScript and React patterns in the repo.",
+    "All reads and writes to .agent-board/*.json preserve unknown fields by round-tripping the parsed object rather than rewriting a fixed shape.",
+    "relevantFiles in TASK-003.json lists every file touched by the implementation using repo-relative paths.",
+    "activityLog in TASK-003.json contains at least one entry per status transition (in-progress, ready-for-qa) with ISO 8601 timestamps and the acting agent.",
+    "lastUpdated in TASK-003.json is refreshed on every write and matches the latest activityLog entry timestamp.",
+    "No code path invokes a real Claude or Codex network API; any agent interaction is file-based via .agent-board/.",
+    "npm run compile succeeds with zero TypeScript errors against the changed files."
+  ],
+  "qaChecklist": [
+    "Open the Agent Board webview in an Extension Development Host and confirm TASK-003 renders with the new title and description.",
+    "Move TASK-003 through its status lifecycle in the UI and verify the task JSON file on disk reflects each transition with a fresh activityLog entry and updated lastUpdated.",
+    "Manually add an unknown field to TASK-003.json, trigger a write from the extension, and confirm the unknown field survives.",
+    "Reload the VS Code window and confirm TASK-003 state rehydrates from disk without loss.",
+    "Run npm run compile and confirm it exits 0.",
+    "Run npm run typecheck if defined and confirm it exits 0.",
+    "Grep the diff for fetch, axios, https.request, anthropic, and openai to confirm no real agent API calls were added."
+  ],
+  "designQaChecklist": [
+    "TASK-003's card and detail view feel like an operational command centre: dense, scannable, no marketing chrome.",
+    "Primary task controls (claim, move to in-progress, move to ready-for-qa, complete) are visible without extra clicks or hover-only affordances.",
+    "Status, priority, assignedAgent, and qaAgent are legible at a glance in the board view.",
+    "Any new UI added for this task matches existing spacing, typography, and color tokens in webview/ rather than introducing one-off styles.",
+    "Empty states (no description, no relevantFiles) render gracefully instead of collapsing layout."
+  ],
+  "validationCommands": [
+    "npm run compile",
+    "npm run typecheck",
+    "npm run build"
+  ],
+  "relevantFiles": [],
+  "constraints": [
+    "Do not call real Claude or Codex APIs; agent coordination stays file-based via .agent-board/.",
+    "Keep extension backend code in src/ and webview UI code in webview/; do not cross the boundary.",
+    "Preserve unknown fields in every .agent-board/*.json read-modify-write cycle.",
+    "Read .agent-board/project.json before claiming or implementing the task and reflect any relevant rules in the implementation.",
+    "Use the TASK-003 JSON file as the single source of truth for task state; do not duplicate state into another store.",
+    "Update relevantFiles, agentNotes, activityLog, and lastUpdated as the implementation progresses, not only at the end.",
+    "Run npm run compile and pass before transitioning TASK-003 to ready-for-qa.",
+    "Follow existing TypeScript and React patterns; do not introduce new frameworks, state libraries, or build tooling.",
+    "The task title and description must be populated in TASK-003.json before any code is written for the substantive change."
+  ],
+  "agentNotes": "",
+  "qaNotes": [],
+  "qaEvidence": [],
+  "activityLog": [
+    {
+      "timestamp": "2026-06-05T23:40:51.733Z",
+      "actor": "vscode",
+      "message": "Created blank task."
+    },
+    {
+      "timestamp": "2026-06-05T23:41:31.366Z",
+      "actor": "claude-code",
+      "message": "Generated PRD."
+    }
+  ],
+  "claimedBy": "",
+  "qaClaimedBy": "",
+  "branchName": "",
+  "lastUpdated": "2026-06-05T23:41:31.426Z"
+}

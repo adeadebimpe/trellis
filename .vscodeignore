@@ -1,0 +1,10 @@
+.agent-board/**
+.claude/**
+.vscode/**
+node_modules/**
+src/**
+webview/**
+tests/**
+*.map
+tsconfig.json
+esbuild.mjs

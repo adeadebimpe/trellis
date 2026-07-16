@@ -1,0 +1,99 @@
+{
+  "name": "agent-board",
+  "displayName": "Agent Board",
+  "description": "A repo-native Kanban command centre for orchestrating AI coding agents in VS Code.",
+  "version": "0.0.4",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agent-board",
+          "title": "Agent Board",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "agent-board": [
+        {
+          "type": "webview",
+          "id": "agentBoard.boardView",
+          "name": "Agent Board",
+          "contextualTitle": "Agent Board"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agentBoard.openBoard",
+        "title": "Agent Board: Open Board"
+      },
+      {
+        "command": "agentBoard.prepareAgentFiles",
+        "title": "Agent Board: Prepare Agent Files"
+      },
+      {
+        "command": "agentBoard.configureAi",
+        "title": "Agent Board: Configure AI"
+      },
+      {
+        "command": "agentBoard.clearAi",
+        "title": "Agent Board: Clear AI Settings"
+      },
+      {
+        "command": "agentBoard.configureSpecProvider",
+        "title": "Agent Board: Configure Spec Generation"
+      },
+      {
+        "command": "agentBoard.signInAgents",
+        "title": "Agent Board: Sign In to Agent CLI"
+      },
+      {
+        "command": "agentBoard.signInCodex",
+        "title": "Agent Board: Sign In to Codex CLI"
+      },
+      {
+        "command": "agentBoard.signInClaude",
+        "title": "Agent Board: Sign In to Claude Code"
+      },
+      {
+        "command": "agentBoard.setupClaudeToken",
+        "title": "Agent Board: Generate Claude Automation Token"
+      },
+      {
+        "command": "agentBoard.freshStart",
+        "title": "Agent Board: Fresh Start"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test:prd": "node tests/prdPrompt.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "compile": "npm run typecheck && npm run build",
+    "package": "npm run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
