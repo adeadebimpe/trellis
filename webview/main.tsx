@@ -34,6 +34,21 @@ interface Task {
   claimedBy: string;
   qaClaimedBy: string;
   branchName: string;
+  worktreePath: string;
+  claimedAt: string;
+  lastValidation: {
+    ranAt: string;
+    passed: boolean;
+    results: Array<{ command: string; exitCode: number; durationMs: number; outputTail: string }>;
+  } | null;
+  shipResult: {
+    mode: 'pr' | 'local-merge';
+    branch: string;
+    shippedAt: string;
+    prUrl?: string;
+    mergedInto?: string;
+    mergeCommit?: string;
+  } | null;
   lastUpdated: string;
 }
 
@@ -64,6 +79,7 @@ interface BoardState {
   };
   tasks: Task[];
   project: ProjectContext;
+  liveTerminals: string[];
   settings: {
     specProvider?: string;
     specProviderLabel: string;
@@ -330,7 +346,35 @@ function App(): JSX.Element {
             <Action label="Ready for QA" onClick={() => sendAction(draft, 'mark-ready-qa')} />
             <Action label="Start QA" onClick={() => sendAction(draft, 'start-qa')} />
             <Action label="Pass QA" onClick={() => sendAction(draft, 'pass-qa')} />
+            {state?.liveTerminals?.includes(draft.id) && (
+              <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
+            )}
+            {draft.status === 'human-review' && (
+              <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: selected?.lastUpdated })} primary />
+            )}
+            {draft.status === 'done' && (
+              <Action label="Archive task" onClick={() => vscode.postMessage({ type: 'archive-task', id: draft.id })} />
+            )}
           </div>
+
+          {(draft.lastValidation || draft.shipResult) && (
+            <div className="statusPanel">
+              {draft.lastValidation && (
+                <p className={draft.lastValidation.passed ? 'statusOk' : 'statusBad'}>
+                  Validation {draft.lastValidation.passed ? 'passed' : 'failed'} · {draft.lastValidation.results.length} command(s) · {new Date(draft.lastValidation.ranAt).toLocaleString()}
+                </p>
+              )}
+              {draft.shipResult && (
+                <p className="statusOk">
+                  {draft.shipResult.mode === 'pr' ? (
+                    <>Pull request: <a href={draft.shipResult.prUrl}>{draft.shipResult.prUrl}</a></>
+                  ) : (
+                    <>Merged into {draft.shipResult.mergedInto} ({(draft.shipResult.mergeCommit ?? '').slice(0, 8)})</>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="formGrid">
             <Field label="Task description" value={draft.brief} onChange={(value) => setDraft({ ...draft, brief: value })} />

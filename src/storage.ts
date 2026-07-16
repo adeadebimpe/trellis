@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
-import { agentsMarkdown, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, passQaScript, startQaScript } from './agentFiles';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
+import { withLock } from './locks';
+import { deriveTaskTitle } from './prdPrompt';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
+
+const execFileAsync = promisify(execFile);
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -24,27 +30,48 @@ export class AgentBoardStorage {
 
   async prepareAgentFiles(): Promise<void> {
     await this.ensureDir(this.boardDir);
-    await this.ensureDir(vscode.Uri.joinPath(this.boardDir, 'tasks'));
-    await this.ensureDir(vscode.Uri.joinPath(this.boardDir, 'qa'));
-    await this.ensureDir(vscode.Uri.joinPath(this.boardDir, 'scripts'));
+    for (const dir of ['tasks', 'qa', 'scripts', 'locks', 'prompts', 'worktrees', 'archive']) {
+      await this.ensureDir(vscode.Uri.joinPath(this.boardDir, dir));
+    }
     await this.ensureDir(vscode.Uri.joinPath(this.root, '.claude', 'skills', 'agent-board'));
 
     await this.ensureProjectContext();
 
-    await this.writeBoardJson();
     await this.upsertMarkdownSection(vscode.Uri.joinPath(this.root, 'AGENTS.md'), '## Agent Board Workflow', agentsMarkdown());
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.root, '.claude', 'skills', 'agent-board', 'SKILL.md'), encoder.encode(claudeSkillMarkdown()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'claim-next-task.mjs'), encoder.encode(claimNextTaskScript()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'claim-task.mjs'), encoder.encode(claimTaskScript()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'complete-task.mjs'), encoder.encode(completeTaskScript()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'start-qa.mjs'), encoder.encode(startQaScript()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'pass-qa.mjs'), encoder.encode(passQaScript()));
-    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', 'fail-qa.mjs'), encoder.encode(failQaScript()));
+    await this.ensureFile(vscode.Uri.joinPath(this.root, '.claude', 'skills', 'agent-board', 'SKILL.md'), claudeSkillMarkdown());
+    const scripts: Array<[string, string]> = [
+      ['_lib.mjs', boardLibScript()],
+      ['claim-next-task.mjs', claimNextTaskScript()],
+      ['claim-task.mjs', claimTaskScript()],
+      ['complete-task.mjs', completeTaskScript()],
+      ['start-qa.mjs', startQaScript()],
+      ['run-validation.mjs', runValidationScript()],
+      ['pass-qa.mjs', passQaScript()],
+      ['fail-qa.mjs', failQaScript()]
+    ];
+    for (const [name, content] of scripts) {
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, 'scripts', name), encoder.encode(content));
+    }
+    await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(this.boardDir, '.gitignore'), encoder.encode(boardGitignore()));
     await this.ensureFile(vscode.Uri.joinPath(this.boardDir, 'activity.log'), '');
-    await this.writeBoardJson();
+    try {
+      await vscode.workspace.fs.delete(vscode.Uri.joinPath(this.boardDir, 'board.json'));
+    } catch {
+      // board.json is derived state and no longer persisted; nothing to clean.
+    }
   }
 
   async resetBoardFiles(): Promise<void> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(this.boardDir, 'worktrees'));
+      for (const [name, type] of entries) {
+        if (type === vscode.FileType.Directory) {
+          await this.removeWorktree(vscode.Uri.joinPath(this.boardDir, 'worktrees', name).fsPath);
+        }
+      }
+    } catch {
+      // No worktrees to clean up.
+    }
     try {
       await vscode.workspace.fs.delete(this.boardDir, { recursive: true, useTrash: false });
     } catch {
@@ -69,28 +96,28 @@ export class AgentBoardStorage {
     return { board, tasks, project };
   }
 
-  async refreshBoardIndex(): Promise<AgentBoardFile> {
-    const tasks = await this.loadTasks();
-    return this.writeBoardJson(tasks);
-  }
-
   async createTask(): Promise<AgentBoardTask> {
     await this.prepareAgentFiles();
-    const tasks = await this.loadTasks();
-    const nextNumber = tasks
-      .map((task) => Number(task.id.replace(/^TASK-/, '')))
-      .filter(Number.isFinite)
-      .reduce((max, value) => Math.max(max, value), 0) + 1;
-    const id = `TASK-${String(nextNumber).padStart(3, '0')}`;
-    const task = this.blankTask(id);
-    await this.writeJson(vscode.Uri.joinPath(this.boardDir, 'tasks', `${id}.json`), task);
-    await this.appendRootActivity('vscode', `Created ${id}.`);
-    await this.writeBoardJson();
-    return task;
+    return this.withTaskLock('_board', 'vscode', async () => {
+      const tasks = await this.loadTasks();
+      const nextNumber = tasks
+        .map((task) => Number(task.id.replace(/^TASK-/, '')))
+        .filter(Number.isFinite)
+        .reduce((max, value) => Math.max(max, value), 0) + 1;
+      const id = `TASK-${String(nextNumber).padStart(3, '0')}`;
+      const task = this.blankTask(id);
+      await this.writeJson(vscode.Uri.joinPath(this.boardDir, 'tasks', `${id}.json`), task);
+      await this.appendRootActivity('vscode', `Created ${id}.`);
+      return task;
+    });
   }
 
   async saveTask(request: SaveTaskRequest, actor = 'vscode'): Promise<AgentBoardTask> {
     await this.prepareAgentFiles();
+    return this.withTaskLock(request.task.id, actor, () => this.saveTaskLocked(request, actor));
+  }
+
+  private async saveTaskLocked(request: SaveTaskRequest, actor: string): Promise<AgentBoardTask> {
     const uri = this.taskUri(request.task.id);
     const existing = await this.readJson<AgentBoardTask>(uri);
     if (request.expectedLastUpdated && existing.lastUpdated !== request.expectedLastUpdated) {
@@ -108,10 +135,17 @@ export class AgentBoardStorage {
     if (!incomingLog) {
       merged.activityLog = [...(existing.activityLog ?? []), { timestamp: now, actor, message: 'Updated task.' }];
     }
+    if (!String(merged.title ?? '').trim()) {
+      const derived = deriveTaskTitle(merged);
+      merged.title = derived === merged.id ? '' : derived;
+    }
 
     await this.writeJson(uri, merged);
-    await this.writeBoardJson();
     return merged;
+  }
+
+  private withTaskLock<T>(key: string, owner: string, fn: () => Promise<T>): Promise<T> {
+    return withLock(vscode.Uri.joinPath(this.boardDir, 'locks').fsPath, key, owner, fn);
   }
 
   async moveTask(id: string, status: TaskStatus, expectedLastUpdated?: string): Promise<AgentBoardTask> {
@@ -121,9 +155,44 @@ export class AgentBoardStorage {
 
   async deleteTask(id: string): Promise<void> {
     await this.prepareAgentFiles();
-    await vscode.workspace.fs.delete(this.taskUri(id));
+    await this.withTaskLock(id, 'vscode', async () => {
+      let worktreePath = '';
+      try {
+        worktreePath = (await this.readJson<AgentBoardTask>(this.taskUri(id))).worktreePath ?? '';
+      } catch {
+        // Task file may already be gone; still attempt the delete below for a clear error.
+      }
+      if (worktreePath) {
+        await this.removeWorktree(worktreePath);
+      }
+      await vscode.workspace.fs.delete(this.taskUri(id));
+    });
     await this.appendRootActivity('vscode', `Deleted ${id}.`);
-    await this.writeBoardJson();
+  }
+
+  async archiveTask(id: string): Promise<void> {
+    await this.prepareAgentFiles();
+    await this.withTaskLock(id, 'vscode', async () => {
+      const task = await this.readJson<AgentBoardTask>(this.taskUri(id));
+      if (task.status !== 'done') {
+        throw new Error(`Only done tasks can be archived. ${id} is ${task.status}.`);
+      }
+      await vscode.workspace.fs.rename(this.taskUri(id), vscode.Uri.joinPath(this.boardDir, 'archive', `${id}.json`), { overwrite: true });
+    });
+    await this.appendRootActivity('vscode', `Archived ${id}.`);
+  }
+
+  async removeWorktree(worktreePath: string): Promise<void> {
+    try {
+      await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: this.root.fsPath, timeout: 20000 });
+    } catch {
+      // Worktree may already be gone or this is not a git repo.
+    }
+    try {
+      await execFileAsync('git', ['worktree', 'prune'], { cwd: this.root.fsPath, timeout: 20000 });
+    } catch {
+      // Not a git repo; nothing to prune.
+    }
   }
 
   async saveProjectContext(project: ProjectContext): Promise<ProjectContext> {
@@ -159,6 +228,11 @@ export class AgentBoardStorage {
   }
 
   async runAction(id: string, action: string, expectedLastUpdated?: string): Promise<AgentBoardTask> {
+    await this.prepareAgentFiles();
+    return this.withTaskLock(id, 'vscode', () => this.runActionLocked(id, action, expectedLastUpdated));
+  }
+
+  private async runActionLocked(id: string, action: string, expectedLastUpdated?: string): Promise<AgentBoardTask> {
     const existing = await this.readJson<AgentBoardTask>(this.taskUri(id));
     const now = new Date().toISOString();
     const patch: Partial<AgentBoardTask> & { id: string } = { id };
@@ -220,7 +294,7 @@ export class AgentBoardStorage {
     }
 
     patch.activityLog = activity;
-    return this.saveTask({ task: patch, expectedLastUpdated }, 'vscode');
+    return this.saveTaskLocked({ task: patch, expectedLastUpdated }, 'vscode');
   }
 
   private generateDescription(task: AgentBoardTask): string {
@@ -268,25 +342,6 @@ export class AgentBoardStorage {
       'Check edge cases or empty states implied by the task.',
       'Confirm agentNotes, relevantFiles, activityLog, and status are up to date.'
     ];
-  }
-
-  private generateDesignQaChecklist(task: AgentBoardTask): string[] {
-    if (task.designQaChecklist?.length) {
-      return task.designQaChecklist;
-    }
-
-    return [
-      'Check text, controls, and panels for overflow or overlap at common desktop and mobile widths.',
-      'Verify spacing, alignment, and hierarchy match the product surface.',
-      'Confirm interactive states are visible and understandable.',
-      'Check important empty, loading, error, and long-content states when relevant.',
-      'Attach or reference screenshots when visual behavior is part of the task.'
-    ];
-  }
-
-  private async defaultValidationCommands(): Promise<string[]> {
-    const project = await this.loadProjectContext();
-    return project.validationCommands.length ? project.validationCommands : project.inference.suggestedValidation;
   }
 
   private looksLikeSeedDescription(description: string, title: string): boolean {
@@ -424,20 +479,12 @@ export class AgentBoardStorage {
       claimedBy: '',
       qaClaimedBy: '',
       branchName: '',
+      worktreePath: '',
+      claimedAt: '',
+      lastValidation: null,
+      shipResult: null,
       lastUpdated: now
     };
-  }
-
-  private async writeBoardJson(tasks?: AgentBoardTask[]): Promise<AgentBoardFile> {
-    const loadedTasks = tasks ?? await this.loadTasksOrEmpty();
-    const board: AgentBoardFile = {
-      version: 1,
-      columns: columns.map((column) => ({ id: column.id, title: column.title })),
-      tasks: loadedTasks.map(({ id, title, status, priority, assignedAgent, qaAgent, lastUpdated }) => ({ id, title, status, priority, assignedAgent, qaAgent, lastUpdated })),
-      lastUpdated: new Date().toISOString()
-    };
-    await this.writeJson(vscode.Uri.joinPath(this.boardDir, 'board.json'), board);
-    return board;
   }
 
   private async loadTasks(): Promise<AgentBoardTask[]> {
@@ -467,6 +514,10 @@ export class AgentBoardStorage {
       claimedBy: task.claimedBy ?? '',
       qaClaimedBy: task.qaClaimedBy ?? '',
       branchName: task.branchName ?? '',
+      worktreePath: task.worktreePath ?? '',
+      claimedAt: task.claimedAt ?? '',
+      lastValidation: task.lastValidation ?? null,
+      shipResult: task.shipResult ?? null,
       agentNotes: task.agentNotes ?? ''
     };
   }

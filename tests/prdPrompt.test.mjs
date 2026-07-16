@@ -70,17 +70,25 @@ assert.match(prompt, /Do not treat task ids, task JSON fields, Agent Board inter
 assert.match(prompt, /Do not write about updating task JSON/);
 assert.ok(prompt.indexOf('Let shoppers save a delivery note') < prompt.indexOf('TASK-003 JSON has'));
 
+assert.match(prompt, /relevantFiles/);
+assert.match(prompt, /Explore the repository/);
+
 const patch = normalizeSpecPatch({
   description: 'Delivery notes can be added during checkout.',
   acceptanceCriteria: ['Checkout has a delivery note field.'],
   qaChecklist: ['Place an order with a delivery note.'],
   designQaChecklist: ['Check the note field at narrow widths.'],
   validationCommands: ['npm run compile'],
+  relevantFiles: ['src/checkout/OrderForm.tsx'],
   constraints: ['Do not expose notes publicly.']
 }, task, project);
 
 assert.equal(patch.description, 'Delivery notes can be added during checkout.');
 assert.deepEqual(patch.acceptanceCriteria, ['Checkout has a delivery note field.']);
 assert.deepEqual(patch.validationCommands, ['npm run compile']);
+assert.deepEqual(patch.relevantFiles, ['src/checkout/OrderForm.tsx']);
+
+const fallbackPatch = normalizeSpecPatch({ description: 'x' }, task, project);
+assert.deepEqual(fallbackPatch.relevantFiles, task.relevantFiles);
 
 console.log('PRD prompt test passed.');

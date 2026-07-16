@@ -2,7 +2,7 @@
   "name": "agent-board",
   "displayName": "Agent Board",
   "description": "A repo-native Kanban command centre for orchestrating AI coding agents in VS Code.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "local",
   "engines": {
     "vscode": "^1.90.0"
@@ -79,6 +79,8 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "test:prd": "node tests/prdPrompt.test.mjs",
+    "test:scripts": "node tests/scripts.test.mjs",
+    "test": "npm run test:prd && npm run test:scripts",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"

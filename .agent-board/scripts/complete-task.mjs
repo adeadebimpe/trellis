@@ -1,23 +1,35 @@
 #!/usr/bin/env node
-import { readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
-const taskId = process.argv[2];
-if (!taskId) {
-  console.error('Usage: node .agent-board/scripts/complete-task.mjs TASK-001');
-  process.exit(1);
-}
+await runScript(async () => {
+  const taskId = process.argv[2];
+  if (!taskId) {
+    throw fail(1, 'Usage: node .agent-board/scripts/complete-task.mjs TASK-001');
+  }
 
-const path = join(process.cwd(), '.agent-board', 'tasks', taskId + '.json');
-const task = JSON.parse(await readFile(path, 'utf8'));
-const now = new Date().toISOString();
-const actor = task.claimedBy || 'agent';
-task.status = 'ready-for-qa';
-task.lastUpdated = now;
-task.activityLog = Array.isArray(task.activityLog) ? task.activityLog : [];
-task.activityLog.push({ timestamp: now, actor, message: 'Moved task to ready-for-qa.' });
+  const mainRoot = resolveMainRoot();
+  const path = taskPath(mainRoot, taskId);
 
-const tmp = path + '.tmp';
-await writeFile(tmp, JSON.stringify(task, null, 2) + '\n');
-await rename(tmp, path);
-console.log(JSON.stringify(task, null, 2));
+  const task = await withTaskLock(mainRoot, taskId, 'complete-task', async () => {
+    const current = await readJson(path);
+    if (current.status !== 'building') {
+      throw fail(2, 'Task must be building to complete. Current status: ' + current.status + '.');
+    }
+    if (!current.lastValidation || !current.lastValidation.passed) {
+      throw fail(3, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+    }
+    if (current.claimedAt && current.lastValidation.ranAt <= current.claimedAt) {
+      throw fail(3, 'Validation is older than the current claim. Re-run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+    }
+    const now = new Date().toISOString();
+    const actor = current.claimedBy || 'agent';
+    current.status = 'ready-for-qa';
+    current.lastUpdated = now;
+    current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
+    current.activityLog.push({ timestamp: now, actor, message: 'Moved task to ready-for-qa.' });
+    await writeJson(path, current);
+    return current;
+  });
+
+  console.log(JSON.stringify(task, null, 2));
+});

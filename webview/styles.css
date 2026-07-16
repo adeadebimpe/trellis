@@ -454,6 +454,31 @@ h1 {
   border-color: var(--accent);
 }
 
+.statusPanel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 0 0 18px;
+  padding: 10px 12px;
+}
+
+.statusPanel p {
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.statusPanel a {
+  color: var(--blue);
+}
+
+.statusOk {
+  color: var(--green);
+}
+
+.statusBad {
+  color: var(--red);
+}
+
 .formGrid {
   display: grid;
   gap: 12px;

@@ -1,26 +1,29 @@
 #!/usr/bin/env node
-import { readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
-const [taskId, ...reasonParts] = process.argv.slice(2);
-const reason = reasonParts.join(' ').trim();
-if (!taskId || !reason) {
-  console.error('Usage: node .agent-board/scripts/fail-qa.mjs TASK-001 "failure reason"');
-  process.exit(1);
-}
+await runScript(async () => {
+  const [taskId, ...reasonParts] = process.argv.slice(2);
+  const reason = reasonParts.join(' ').trim();
+  if (!taskId || !reason) {
+    throw fail(1, 'Usage: node .agent-board/scripts/fail-qa.mjs TASK-001 "failure reason"');
+  }
 
-const path = join(process.cwd(), '.agent-board', 'tasks', taskId + '.json');
-const task = JSON.parse(await readFile(path, 'utf8'));
-const now = new Date().toISOString();
-const actor = task.qaClaimedBy || task.qaAgent || 'qa';
-task.status = 'failed-qa';
-task.lastUpdated = now;
-task.qaNotes = Array.isArray(task.qaNotes) ? task.qaNotes : [];
-task.qaNotes.push({ timestamp: now, actor, message: reason });
-task.activityLog = Array.isArray(task.activityLog) ? task.activityLog : [];
-task.activityLog.push({ timestamp: now, actor, message: 'QA failed: ' + reason });
+  const mainRoot = resolveMainRoot();
+  const path = taskPath(mainRoot, taskId);
 
-const tmp = path + '.tmp';
-await writeFile(tmp, JSON.stringify(task, null, 2) + '\n');
-await rename(tmp, path);
-console.log(JSON.stringify(task, null, 2));
+  const task = await withTaskLock(mainRoot, taskId, 'fail-qa', async () => {
+    const current = await readJson(path);
+    const now = new Date().toISOString();
+    const actor = current.qaClaimedBy || current.qaAgent || 'qa';
+    current.status = 'failed-qa';
+    current.lastUpdated = now;
+    current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
+    current.qaNotes.push({ timestamp: now, actor, message: reason });
+    current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
+    current.activityLog.push({ timestamp: now, actor, message: 'QA failed: ' + reason });
+    await writeJson(path, current);
+    return current;
+  });
+
+  console.log(JSON.stringify(task, null, 2));
+});

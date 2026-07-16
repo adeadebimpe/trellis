@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel } from './ai';
 import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, signInCodexCli } from './cliAuth';
+import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
@@ -14,6 +15,10 @@ let activeStorage: Awaited<ReturnType<typeof getWorkspaceStorage>> | undefined;
 let activeContext: vscode.ExtensionContext | undefined;
 const ONBOARDING_COMPLETE_KEY = 'agentBoard.onboardingComplete';
 const execFileAsync = promisify(execFile);
+
+type AgentKind = 'build' | 'qa';
+const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
+const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
 
 export function activate(context: vscode.ExtensionContext): void {
   activeContext = context;
@@ -56,11 +61,67 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  const watcher = vscode.workspace.createFileSystemWatcher('**/.agent-board/**/*.json');
+  // Anchored so JSON inside .agent-board/worktrees/* checkouts never triggers refreshes.
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  const watcher = vscode.workspace.createFileSystemWatcher(
+    folder
+      ? new vscode.RelativePattern(folder, '.agent-board/{tasks/*.json,project.json}')
+      : '**/.agent-board/{tasks/*.json,project.json}'
+  );
   watcher.onDidCreate(scheduleRefresh);
   watcher.onDidChange(scheduleRefresh);
   watcher.onDidDelete(scheduleRefresh);
   context.subscriptions.push(watcher);
+
+  // Reclaim terminals from a previous extension-host session by name.
+  for (const terminal of vscode.window.terminals) {
+    const match = TERMINAL_NAME_PATTERN.exec(terminal.name);
+    if (match) {
+      agentTerminals.set(match[1], { terminal, kind: match[2] as AgentKind });
+    }
+  }
+
+  context.subscriptions.push(
+    vscode.window.onDidCloseTerminal(async (terminal) => {
+      for (const [taskId, entry] of agentTerminals) {
+        if (entry.terminal === terminal) {
+          agentTerminals.delete(taskId);
+          await handleAgentTerminalClosed(taskId, entry.kind);
+          break;
+        }
+      }
+    })
+  );
+}
+
+async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promise<void> {
+  try {
+    const storage = await resolveStorage();
+    const state = await storage.loadBoardState();
+    const task = state.tasks.find((item) => item.id === taskId);
+    if (!task) {
+      return;
+    }
+    const interrupted = (kind === 'build' && task.status === 'building') || (kind === 'qa' && task.status === 'qa-running');
+    if (!interrupted) {
+      return;
+    }
+    const now = new Date().toISOString();
+    await storage.saveTask({
+      task: {
+        id: taskId,
+        status: 'human-review',
+        activityLog: [
+          ...(task.activityLog ?? []),
+          { timestamp: now, actor: 'vscode', message: `Agent terminal closed while task was ${task.status}. Moved to human-review for follow-up.` }
+        ]
+      }
+    });
+    vscode.window.showWarningMessage(`Agent terminal for ${taskId} closed while it was ${task.status}. The task was moved to Human Review.`);
+    await postState();
+  } catch (error) {
+    console.error('Agent Board: failed to handle closed agent terminal', error);
+  }
 }
 
 export function deactivate(): void {
@@ -129,15 +190,15 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
             : undefined;
           await runGenerateSpecAction(context, message.id, saved?.lastUpdated ?? message.expectedLastUpdated);
         } else if (message.action === 'start-build') {
-          const saved = message.task
-            ? await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated })
-            : undefined;
-          await runStartBuildAction(message.id, saved?.lastUpdated ?? message.expectedLastUpdated);
+          if (message.task) {
+            await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated });
+          }
+          await runStartBuildAction(message.id);
         } else if (message.action === 'start-qa') {
-          const saved = message.task
-            ? await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated })
-            : undefined;
-          await runStartQaAction(message.id, saved?.lastUpdated ?? message.expectedLastUpdated);
+          if (message.task) {
+            await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated });
+          }
+          await runStartQaAction(message.id);
         } else {
           await storage.runAction(message.id, message.action, message.expectedLastUpdated);
         }
@@ -178,6 +239,23 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         break;
       case 'open-full-board':
         await openBoard(context);
+        break;
+      case 'show-terminal': {
+        const entry = agentTerminals.get(message.id);
+        if (entry) {
+          entry.terminal.show();
+        } else {
+          vscode.window.showInformationMessage(`No live agent terminal for ${message.id}.`);
+        }
+        break;
+      }
+      case 'ship-task':
+        await runShipAction(message.id, message.expectedLastUpdated);
+        await postState();
+        break;
+      case 'archive-task':
+        await storage.archiveTask(message.id);
+        await postState();
         break;
       case 'fresh-start':
         await freshStart(context);
@@ -244,7 +322,7 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
   );
 }
 
-async function runStartBuildAction(id: string, expectedLastUpdated?: string): Promise<void> {
+async function runStartBuildAction(id: string): Promise<void> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = findTask(state.tasks, id);
@@ -256,12 +334,14 @@ async function runStartBuildAction(id: string, expectedLastUpdated?: string): Pr
 
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent]);
-  launchAgentTerminal(storage.root.fsPath, agent, buildImplementationPrompt(id));
+  const claimed = findTask((await storage.loadBoardState()).tasks, id);
+  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName);
+  await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath);
   vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`);
   await postState();
 }
 
-async function runStartQaAction(id: string, expectedLastUpdated?: string): Promise<void> {
+async function runStartQaAction(id: string): Promise<void> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = findTask(state.tasks, id);
@@ -273,9 +353,21 @@ async function runStartQaAction(id: string, expectedLastUpdated?: string): Promi
 
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent]);
-  launchAgentTerminal(storage.root.fsPath, agent, buildQaPrompt(id));
+  const started = findTask((await storage.loadBoardState()).tasks, id);
+  const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
+  await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath);
   vscode.window.showInformationMessage(`${agentLabel(agent)} started QA for ${id} in a terminal.`);
   await postState();
+}
+
+async function runShipAction(id: string, expectedLastUpdated?: string): Promise<void> {
+  const storage = await resolveStorage();
+  const task = findTask((await storage.loadBoardState()).tasks, id);
+  const outcome = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Shipping ${id}...`, cancellable: false },
+    () => shipTask(storage, task, expectedLastUpdated)
+  );
+  vscode.window.showInformationMessage(outcome);
 }
 
 function findTask(tasks: AgentBoardTask[], id: string): AgentBoardTask {
@@ -310,37 +402,71 @@ async function runAgentBoardScript(workspacePath: string, args: string[]): Promi
   }
 }
 
-function launchAgentTerminal(workspacePath: string, agent: Exclude<AssignedAgent, 'unassigned'>, prompt: string): void {
-  const terminal = vscode.window.createTerminal({ name: `Agent Board: ${agentLabel(agent)}`, cwd: workspacePath });
-  terminal.show();
-  terminal.sendText(agentLaunchCommand(agent, prompt));
-}
+async function launchAgentTerminal(
+  storage: Awaited<ReturnType<typeof getWorkspaceStorage>>,
+  taskId: string,
+  kind: AgentKind,
+  agent: Exclude<AssignedAgent, 'unassigned'>,
+  prompt: string,
+  worktreePath: string
+): Promise<void> {
+  const promptUri = vscode.Uri.joinPath(storage.boardDir, 'prompts', `${taskId}-${kind}.md`);
+  await vscode.workspace.fs.writeFile(promptUri, new TextEncoder().encode(prompt));
 
-function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, prompt: string): string {
-  if (agent === 'claude') {
-    return `claude -p ${shellQuote(prompt)}`;
+  const previous = agentTerminals.get(taskId);
+  if (previous) {
+    // Deregister first so onDidCloseTerminal does not treat this as an interrupted run.
+    agentTerminals.delete(taskId);
+    previous.terminal.dispose();
   }
-  return `codex exec --skip-git-repo-check ${shellQuote(prompt)}`;
+
+  const terminal = vscode.window.createTerminal({
+    name: `Agent Board: ${taskId} ${kind} (${agentLabel(agent)})`,
+    cwd: worktreePath || storage.root.fsPath
+  });
+  agentTerminals.set(taskId, { terminal, kind });
+  terminal.show();
+  terminal.sendText(agentLaunchCommand(agent, promptUri.fsPath));
 }
 
-function buildImplementationPrompt(id: string): string {
+function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptPath: string): string {
+  // POSIX shells only; the prompt lives in a file to avoid multi-line sendText quoting issues.
+  if (agent === 'claude') {
+    return `claude -p "$(cat ${shellQuote(promptPath)})"`;
+  }
+  return `codex exec --skip-git-repo-check "$(cat ${shellQuote(promptPath)})"`;
+}
+
+function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
     `You are the assigned implementation agent for Agent Board task ${id}.`,
-    'Read .agent-board/project.json, .agent-board/board.json, and the matching .agent-board/tasks task JSON before editing.',
-    'Implement only this task. Update relevantFiles, agentNotes, activityLog, and validation evidence as you work.',
-    'Run the relevant validation commands. When implementation is complete, run: node .agent-board/scripts/complete-task.mjs ' + id,
+    worktreePath
+      ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
+      : 'Your working directory is the repository root.',
+    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
+    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing.`,
+    'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
+    `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
     'If blocked, update the task with a blocker note and move it to human-review.'
   ].join('\n');
 }
 
-function buildQaPrompt(id: string): string {
+function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
     `You are the QA agent for Agent Board task ${id}.`,
-    'Read .agent-board/project.json and the matching task JSON.',
-    'Review acceptanceCriteria, qaChecklist, designQaChecklist, changed files, agentNotes, and validation evidence.',
-    'Run the relevant validation or functional checks.',
-    'If QA passes, run: node .agent-board/scripts/pass-qa.mjs ' + id + ' "QA passed."',
-    'If QA fails, run: node .agent-board/scripts/fail-qa.mjs ' + id + ' "specific failure reason"'
+    worktreePath
+      ? `Your working directory is the task's git worktree on branch ${branchName}; review the implementation here.`
+      : 'Your working directory is the repository root.',
+    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree.`,
+    `Read ${mainRoot}/.agent-board/project.json and the task JSON.`,
+    'Review acceptanceCriteria, qaChecklist, designQaChecklist, changed files on the branch, agentNotes, and validation evidence.',
+    `Run node "${scripts}/run-validation.mjs" ${id} to verify the validation commands pass, plus any functional checks the task calls for. Record findings in qaEvidence.`,
+    `If QA passes, run: node "${scripts}/pass-qa.mjs" ${id} "QA passed."`,
+    `If QA fails, run: node "${scripts}/fail-qa.mjs" ${id} "specific failure reason"`
   ].join('\n');
 }
 
@@ -405,6 +531,7 @@ async function postState(): Promise<void> {
     type: 'state',
     state: {
       ...state,
+      liveTerminals: [...agentTerminals.keys()],
       settings: {
         specProvider: provider,
         specProviderLabel: specProviderLabel(provider),

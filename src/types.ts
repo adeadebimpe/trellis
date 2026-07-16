@@ -19,6 +19,28 @@ export interface ActivityEntry {
   message: string;
 }
 
+export interface ValidationResult {
+  command: string;
+  exitCode: number;
+  durationMs: number;
+  outputTail: string;
+}
+
+export interface ValidationRun {
+  ranAt: string;
+  passed: boolean;
+  results: ValidationResult[];
+}
+
+export interface ShipResult {
+  mode: 'pr' | 'local-merge';
+  branch: string;
+  shippedAt: string;
+  prUrl?: string;
+  mergedInto?: string;
+  mergeCommit?: string;
+}
+
 export interface AgentBoardTask {
   id: string;
   title: string;
@@ -41,6 +63,10 @@ export interface AgentBoardTask {
   claimedBy: string;
   qaClaimedBy: string;
   branchName: string;
+  worktreePath: string;
+  claimedAt: string;
+  lastValidation: ValidationRun | null;
+  shipResult: ShipResult | null;
   lastUpdated: string;
   [key: string]: unknown;
 }

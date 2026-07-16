@@ -1,30 +1,34 @@
 #!/usr/bin/env node
-import { readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { ensureWorktree, fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
-const [taskId, agent = 'qa'] = process.argv.slice(2);
-if (!taskId) {
-  console.error('Usage: node .agent-board/scripts/start-qa.mjs TASK-001 codex|claude');
-  process.exit(1);
-}
+await runScript(async () => {
+  const [taskId, agent = 'qa'] = process.argv.slice(2);
+  if (!taskId) {
+    throw fail(1, 'Usage: node .agent-board/scripts/start-qa.mjs TASK-001 codex|claude');
+  }
 
-const path = join(process.cwd(), '.agent-board', 'tasks', taskId + '.json');
-const task = JSON.parse(await readFile(path, 'utf8'));
-if (task.status !== 'ready-for-qa' && task.status !== 'failed-qa') {
-  console.error('Task must be ready-for-qa or failed-qa before QA can start.');
-  process.exit(2);
-}
+  const mainRoot = resolveMainRoot();
+  const path = taskPath(mainRoot, taskId);
 
-const now = new Date().toISOString();
-task.status = 'qa-running';
-task.qaClaimedBy = agent;
-task.qaAgent = task.qaAgent || (['claude', 'codex'].includes(agent) ? agent : 'unassigned');
-task.lastUpdated = now;
-task.qaNotes = Array.isArray(task.qaNotes) ? task.qaNotes : [];
-task.activityLog = Array.isArray(task.activityLog) ? task.activityLog : [];
-task.activityLog.push({ timestamp: now, actor: agent, message: 'Started QA.' });
+  const task = await withTaskLock(mainRoot, taskId, agent, async () => {
+    const current = await readJson(path);
+    if (current.status !== 'ready-for-qa' && current.status !== 'failed-qa') {
+      throw fail(2, 'Task must be ready-for-qa or failed-qa before QA can start.');
+    }
+    const now = new Date().toISOString();
+    const worktree = ensureWorktree(mainRoot, current);
+    current.status = 'qa-running';
+    current.qaClaimedBy = agent;
+    current.qaAgent = current.qaAgent && current.qaAgent !== 'unassigned' ? current.qaAgent : (['claude', 'codex'].includes(agent) ? agent : 'unassigned');
+    current.branchName = worktree.branchName;
+    current.worktreePath = worktree.worktreePath;
+    current.lastUpdated = now;
+    current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
+    current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
+    current.activityLog.push({ timestamp: now, actor: agent, message: 'Started QA. ' + worktree.message });
+    await writeJson(path, current);
+    return current;
+  });
 
-const tmp = path + '.tmp';
-await writeFile(tmp, JSON.stringify(task, null, 2) + '\n');
-await rename(tmp, path);
-console.log(JSON.stringify(task, null, 2));
+  console.log(JSON.stringify({ task, taskFile: path, worktreePath: task.worktreePath }, null, 2));
+});
