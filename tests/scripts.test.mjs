@@ -192,6 +192,11 @@ assert.equal(JSON.parse(result.stdout).task.id, 'TASK-004');
 assert.equal(readTask(repo, 'TASK-004').status, 'building');
 assert.equal(readTask(repo, 'TASK-005').status, 'ready-for-agent');
 
+writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-005.json'), JSON.stringify({ ...readTask(repo, 'TASK-005'), status: 'backlog' }, null, 2));
+result = runScript(repo, 'claim-next-task.mjs', ['claude']);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(JSON.parse(result.stdout).noTask, true);
+
 // --- Fixture B: not a git repo ---
 const plain = await mkdtemp(join(tmpdir(), 'agent-board-plain-'));
 cleanups.push(plain);

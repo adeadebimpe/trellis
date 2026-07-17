@@ -25,6 +25,8 @@ const autoRepairStarting = new Set<string>();
 const autoRepairAttemptedVersions = new Map<string, string>();
 // Task ids with a PRD generation in flight, so reopened webviews can restore the indicator.
 const generatingSpecs = new Set<string>();
+const autoBuildStarting = new Set<string>();
+const autoBuildAttemptedVersions = new Map<string, string>();
 
 type CliAgent = Exclude<AssignedAgent, 'unassigned'>;
 let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
@@ -102,6 +104,9 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher.onDidChange(scheduleRefresh);
   watcher.onDidDelete(scheduleRefresh);
   context.subscriptions.push(watcher);
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('agentBoard.autoContinue')) scheduleRefresh();
+  }));
 
   // Reclaim terminals from a previous extension-host session by name.
   for (const terminal of vscode.window.terminals) {
@@ -450,7 +455,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent]);
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
-  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName);
+  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
   await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath);
   vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`);
   await postState();
@@ -552,7 +557,7 @@ function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptP
   return `codex exec --skip-git-repo-check "$(cat ${shellQuote(promptPath)})"`;
 }
 
-function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
   const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
@@ -564,6 +569,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
     `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest activityLog and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
+    `Then run node "${scripts}/claim-next-task.mjs" ${agent}. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
     'If blocked, update the task with a blocker note and move it to human-review.'
   ].join('\n');
 }
@@ -585,7 +591,7 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
   ].join('\n');
 }
 
-function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
   const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
@@ -597,6 +603,7 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
     `Also read ${mainRoot}/.agent-board/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
     `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
+    `Then run node "${scripts}/claim-next-task.mjs" ${agent} and continue any returned task until it prints {"noTask":true}.`,
     'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
   ].join('\n');
 }
@@ -653,7 +660,39 @@ function scheduleRefresh(): void {
 async function refreshBoard(): Promise<void> {
   await startReadyQaTasks();
   await startFailedQaRepairs();
+  await startReadyBuildTasks();
   await postState();
+}
+
+async function startReadyBuildTasks(): Promise<void> {
+  if (!vscode.workspace.getConfiguration('agentBoard').get<boolean>('autoContinue', true)) return;
+  if ([...agentTerminals.values()].some((entry) => entry.kind === 'build') || autoBuildStarting.size) return;
+  const storage = await resolveStorage();
+  const { tasks } = await storage.loadBoardState();
+  const rank = { high: 0, medium: 1, low: 2 } as const;
+  const task = tasks
+    .filter((candidate) => candidate.status === 'ready-for-agent' && autoBuildAttemptedVersions.get(candidate.id) !== candidate.lastUpdated)
+    .sort((a, b) => rank[a.priority] - rank[b.priority] || a.id.localeCompare(b.id))[0];
+  if (!task) return;
+
+  autoBuildStarting.add(task.id);
+  autoBuildAttemptedVersions.set(task.id, task.lastUpdated);
+  try {
+    let ready = task;
+    if (ready.assignedAgent === 'unassigned') {
+      const assignedAgent = await pickAutoAgent();
+      if (assignedAgent === 'unassigned') throw new Error('No signed-in Codex or Claude CLI is available.');
+      ready = await storage.saveTask({ task: { id: ready.id, assignedAgent }, expectedLastUpdated: ready.lastUpdated });
+      autoBuildAttemptedVersions.set(ready.id, ready.lastUpdated);
+    }
+    await runStartBuildAction(ready.id);
+  } catch (error) {
+    const current = (await storage.loadBoardState()).tasks.find((candidate) => candidate.id === task.id);
+    if (current) autoBuildAttemptedVersions.set(current.id, current.lastUpdated);
+    vscode.window.showErrorMessage(`Automatic build could not start for ${task.id}. ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    autoBuildStarting.delete(task.id);
+  }
 }
 
 async function startReadyQaTasks(): Promise<void> {
@@ -708,7 +747,7 @@ async function startFailedQaRepairs(): Promise<void> {
         },
         expectedLastUpdated: task.lastUpdated
       });
-      const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName);
+      const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
       await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath);
       vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
     } catch (error) {

@@ -23,5 +23,6 @@ Use Agent Board when asked to continue project work in this repository.
 13. Move the task to `ready-for-qa` when complete.
 14. If acting as QA agent, claim ready QA work with `node .agent-board/scripts/start-qa.mjs TASK-ID claude`, check acceptance criteria, QA checklist, design QA checklist, changed files, and validation evidence.
 15. Move the task to `human-review` if blocked or uncertain.
+16. After completing a task, run `node .agent-board/scripts/claim-next-task.mjs claude`. Continue from the returned task worktree and repeat until the script prints `{"noTask":true}`.
 
 The `.agent-board/` folder is the source of truth. Preserve unknown fields and reread files before editing so other agent updates are not lost.

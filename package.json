@@ -82,6 +82,12 @@
           "default": true,
           "title": "Git-ignore Board Directory",
           "description": "Add .agent-board/ to the workspace root .gitignore. Disable this if you intentionally commit Agent Board tasks and project context."
+        },
+        "agentBoard.autoContinue": {
+          "type": "boolean",
+          "default": true,
+          "title": "Automatically Continue Ready Tasks",
+          "description": "Start the next highest-priority Ready for Agent task when no build terminal is running."
         }
       }
     }
