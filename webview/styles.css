@@ -1,19 +1,32 @@
 :root {
-  --bg: #08090a;
-  --panel: #0f1011;
-  --panel-2: #161719;
-  --line: rgba(255, 255, 255, 0.06);
-  --line-strong: rgba(255, 255, 255, 0.11);
-  --text: #e6e6e7;
-  --muted: #8a8f98;
-  --subtle: #62666d;
-  --accent: #5e6ad2;
-  --accent-soft: rgba(94, 106, 210, 0.12);
-  --green: #4cb782;
-  --amber: #f2994a;
-  --red: #eb5757;
-  --blue: #5e9eff;
-  --font: "Inter", "SF Pro Text", -apple-system, "Segoe UI", sans-serif;
+  --bg: var(--vscode-editor-background, #08090a);
+  --panel: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #0f1011));
+  --panel-2: var(--vscode-list-hoverBackground, #161719);
+  --line: var(--vscode-contrastBorder, var(--vscode-panel-border, #1f2023));
+  --line-strong: var(--vscode-contrastActiveBorder, var(--vscode-widget-border, #2a2b2f));
+  --text: var(--vscode-foreground, #e6e6e7);
+  --muted: var(--vscode-descriptionForeground, #8a8f98);
+  --subtle: var(--vscode-disabledForeground, var(--vscode-descriptionForeground, #62666d));
+  --accent: var(--vscode-focusBorder, #5e6ad2);
+  --accent-soft: var(--vscode-list-activeSelectionBackground, rgba(94, 106, 210, 0.12));
+  --green: var(--vscode-charts-green, #4cb782);
+  --amber: var(--vscode-charts-orange, #f2994a);
+  --red: var(--vscode-errorForeground, #eb5757);
+  --blue: var(--vscode-textLink-foreground, #5e9eff);
+  --button-bg: var(--vscode-button-background, #5e6ad2);
+  --button-fg: var(--vscode-button-foreground, #ffffff);
+  --button-hover: var(--vscode-button-hoverBackground, #4d59c4);
+  --secondary-button-bg: var(--vscode-button-secondaryBackground, #161719);
+  --secondary-button-fg: var(--vscode-button-secondaryForeground, #e6e6e7);
+  --secondary-button-hover: var(--vscode-button-secondaryHoverBackground, #2a2b2f);
+  --input-bg: var(--vscode-input-background, #0f1011);
+  --input-border: var(--vscode-input-border, #1f2023);
+  --input-fg: var(--vscode-input-foreground, #e6e6e7);
+  --input-placeholder: var(--vscode-input-placeholderForeground, #62666d);
+  --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.45));
+  --font: var(--vscode-font-family, sans-serif);
+  --font-size: var(--vscode-font-size, 13px);
+  --mono-font: var(--vscode-editor-font-family, monospace);
   --radius: 6px;
   --radius-sm: 4px;
 }
@@ -28,7 +41,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: var(--font-size);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -150,7 +163,7 @@ h1 {
   background: var(--panel);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px var(--shadow);
   display: flex;
   flex-direction: column;
   min-width: 190px;
@@ -256,6 +269,14 @@ h1 {
   50% { opacity: 0.45; }
 }
 
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .primary,
 .ghost,
 .action,
@@ -288,16 +309,16 @@ h1 {
 }
 
 .primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--button-bg);
+  border-color: var(--button-bg);
+  color: var(--button-fg);
   font-weight: 500;
   padding: 6px 12px;
 }
 
 .primary:hover {
-  background: #4d59c4;
-  border-color: #4d59c4;
+  background: var(--button-hover);
+  border-color: var(--button-hover);
 }
 
 .ghost {
@@ -309,16 +330,16 @@ h1 {
 }
 
 .danger {
-  background: rgba(215, 81, 81, 0.1);
-  border-color: rgba(215, 81, 81, 0.42);
-  color: #ff8b84;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  border-color: color-mix(in srgb, var(--red) 44%, transparent);
+  color: var(--red);
   font-weight: 600;
   padding: 7px 12px;
 }
 
 .danger:hover {
-  background: rgba(215, 81, 81, 0.18);
-  border-color: #ff8b84;
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  border-color: var(--red);
 }
 
 .workflow {
@@ -509,7 +530,7 @@ h1 {
   background: var(--bg);
   border-left: 1px solid var(--line);
   bottom: 0;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+  box-shadow: -8px 0 32px var(--shadow);
   overflow: auto;
   padding: 20px 22px;
   position: fixed;
@@ -666,7 +687,8 @@ h1 {
 }
 
 .action {
-  background: var(--panel);
+  background: var(--secondary-button-bg);
+  color: var(--secondary-button-fg);
   font-size: 12px;
   font-weight: 500;
   min-height: 32px;
@@ -674,19 +696,19 @@ h1 {
 }
 
 .action:hover {
-  background: var(--panel-2);
+  background: var(--secondary-button-hover);
   border-color: var(--line-strong);
 }
 
 .actionPrimary {
   background: var(--accent-soft);
-  border-color: rgba(94, 106, 210, 0.35);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
   color: var(--accent);
   font-weight: 500;
 }
 
 .actionPrimary:hover {
-  background: rgba(94, 106, 210, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: var(--accent);
 }
 
@@ -742,10 +764,10 @@ label:nth-child(6) {
 textarea,
 input.textInput,
 select {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius);
-  color: var(--text);
+  color: var(--input-fg);
   font-size: 13px;
   line-height: 1.6;
   min-height: 76px;
@@ -764,11 +786,7 @@ select:focus {
 select {
   min-height: 32px;
   padding: 5px 10px;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
+  appearance: auto;
 }
 
 input.textInput {
@@ -858,7 +876,7 @@ input.textInput {
 .contextIntro {
   align-items: flex-start;
   background: linear-gradient(135deg, var(--accent-soft), transparent 72%);
-  border: 1px solid rgba(94, 106, 210, 0.28);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   border-radius: var(--radius);
   display: flex;
   gap: 10px;
@@ -873,9 +891,9 @@ input.textInput {
 }
 
 .contextOptional {
-  background: rgba(94, 106, 210, 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 999px;
-  color: #aeb5ff;
+  color: var(--text);
   flex: 0 0 auto;
   font-size: 10px;
   font-weight: 700;
@@ -897,7 +915,7 @@ input.textInput {
 }
 
 textarea::placeholder {
-  color: var(--subtle);
+  color: var(--input-placeholder);
 }
 
 .sectionToggle {
@@ -926,18 +944,18 @@ textarea::placeholder {
 }
 
 .action:disabled:hover {
-  background: var(--panel);
+  background: var(--secondary-button-bg);
   border-color: var(--line);
 }
 
 .actionPrimary:disabled:hover {
   background: var(--accent-soft);
-  border-color: rgba(94, 106, 210, 0.35);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
 }
 
 .primary:disabled:hover {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--button-bg);
+  border-color: var(--button-bg);
 }
 
 .contextActions p {
