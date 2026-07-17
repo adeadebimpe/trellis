@@ -2,6 +2,10 @@
 
 All notable changes to Trellis are documented here.
 
+## 0.1.1 — 2026-07-18
+
+- Restored the Trellis Activity Bar icon with a VS Code-safe filled, single-colour silhouette.
+
 ## 0.1.0 — 2026-07-18
 
 - Renamed the extension from Agent Board to Trellis.
