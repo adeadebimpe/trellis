@@ -1,10 +1,10 @@
 {
   "id": "TASK-009",
   "title": "Theme Agent Board webview with VS Code theme variables",
-  "status": "building",
+  "status": "done",
   "priority": "medium",
   "assignedAgent": "codex",
-  "qaAgent": "unassigned",
+  "qaAgent": "codex",
   "brief": "Board should follow the theme of vs code",
   "description": "The Agent Board webview currently hardcodes a dark Linear-style palette in webview/styles.css (:root defines --bg: #08090a, --panel, --text, --accent, etc., plus an Inter font stack). This makes the board ignore the user's active VS Code color theme: it stays dark on light themes, clashes with custom themes, and ignores high-contrast modes. The task is to restyle the board so it follows the active VS Code theme by mapping the existing CSS custom properties onto the --vscode-* CSS variables that VS Code injects into every webview (e.g. --vscode-editor-background, --vscode-sideBar-background, --vscode-editorWidget-background, --vscode-foreground, --vscode-descriptionForeground, --vscode-panel-border / --vscode-widget-border, --vscode-focusBorder, --vscode-button-background / --vscode-button-foreground / --vscode-button-hoverBackground, --vscode-input-background / --vscode-input-border, --vscode-list-hoverBackground, --vscode-badge-background, and status colors like --vscode-charts-green / --vscode-charts-orange / --vscode-errorForeground or the testing/notification colors). Typography should use var(--vscode-font-family), var(--vscode-font-size), and var(--vscode-editor-font-family) for monospace areas instead of the hardcoded Inter stack. The recommended approach is to keep the existing internal token names (--bg, --panel, --text, --muted, --accent, ...) and redefine each one in :root as var(--vscode-..., <current value>) with the current hex as fallback, so the ~110 existing var() usages across styles.css keep working and the diff stays small. Any remaining hardcoded hex/rgba values in styles.css (and any inline colors in webview/main.tsx) should be converted to those tokens or to color-mix()/opacity derived from theme variables. The board must remain legible in dark, light, and high-contrast themes and update live when the user switches themes (webviews get new variable values automatically; no reload logic should be required). Semantic status colors (green = done/success, amber = in progress/warning, red = blocked/error, accent = selection/primary actions) must stay distinguishable in both light and dark themes. No behavior, layout, or extension-host (src/) changes are expected beyond styling; the CSP in src/extension.ts already permits the bundled stylesheet.",
   "acceptanceCriteria": [
@@ -58,8 +58,21 @@
     "Follow existing project patterns before introducing new abstractions, and keep changes scoped to this task"
   ],
   "agentNotes": "Remapped the existing CSS token system to VS Code webview variables, retaining the former palette only as non-webview fallbacks. Added theme tokens for primary/secondary buttons, inputs, links, semantic status colors, shadows, typography, and high-contrast borders. Removed fixed button/danger/shadow colors and the fixed-color select SVG; native select rendering now follows the host theme. Added focus-visible outlines using focusBorder. No layout, React, extension-host, dependency, or behavior changes were needed. Static color audit found raw colors only inside documented :root fallbacks.",
-  "qaNotes": [],
-  "qaEvidence": [],
+  "qaNotes": [
+    {
+      "timestamp": "2026-07-17T21:03:13.514Z",
+      "actor": "codex",
+      "message": "Verified stylesheet-only scope, VS Code theme token coverage, high-contrast border precedence, themed controls/focus states, and raw colors restricted to documented fallbacks. Automated validation passes; interactive theme switching remains a Human Review visual check."
+    }
+  ],
+  "qaEvidence": [
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm run test",
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm run test"
+  ],
   "activityLog": [
     {
       "timestamp": "2026-07-17T20:51:51.970Z",
@@ -85,14 +98,73 @@
       "timestamp": "2026-07-17T21:00:00.000Z",
       "actor": "codex",
       "message": "Completed VS Code theme-variable retheme and static raw-color audit. Local typecheck, build, and tests passed."
+    },
+    {
+      "timestamp": "2026-07-17T21:02:30.593Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T21:02:30.689Z",
+      "actor": "codex",
+      "message": "Moved task to ready-for-qa."
+    },
+    {
+      "timestamp": "2026-07-17T21:02:53.331Z",
+      "actor": "codex",
+      "message": "Started QA. Reusing existing worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-009 on branch agent-board/TASK-009-theme-agent-board-webview-with-vs-code-theme-var."
+    },
+    {
+      "timestamp": "2026-07-17T21:03:13.418Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T21:03:13.514Z",
+      "actor": "codex",
+      "message": "QA passed. Moved task to human-review."
+    },
+    {
+      "timestamp": "2026-07-17T21:04:46.036Z",
+      "actor": "vscode",
+      "message": "Marked done."
     }
   ],
   "claimedBy": "codex",
-  "qaClaimedBy": "",
+  "qaClaimedBy": "codex",
   "branchName": "agent-board/TASK-009-theme-agent-board-webview-with-vs-code-theme-var",
   "worktreePath": "/Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-009",
   "claimedAt": "2026-07-17T20:57:37.744Z",
-  "lastValidation": null,
-  "shipResult": null,
-  "lastUpdated": "2026-07-17T20:57:37.744Z"
+  "lastValidation": {
+    "ranAt": "2026-07-17T21:03:13.418Z",
+    "passed": true,
+    "results": [
+      {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "durationMs": 767,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 typecheck\n> tsc --noEmit\n\n"
+      },
+      {
+        "command": "npm run build",
+        "exitCode": 0,
+        "durationMs": 250,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 build\n> node esbuild.mjs\n\n\n  dist/extension.js       95.1kb\n  dist/extension.js.map  150.4kb\n\n⚡ Done in 11ms\n\n  dist/webview/main.js        1.1mb ⚠️\n  dist/webview/main.css      13.2kb\n  dist/webview/main.js.map    1.6mb\n  dist/webview/main.css.map  22.7kb\n\n⚡ Done in 39ms\n"
+      },
+      {
+        "command": "npm run test",
+        "exitCode": 0,
+        "durationMs": 18912,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test\n> npm run test:prd && npm run test:scripts\n\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:prd\n> node tests/prdPrompt.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-prdPrompt.cjs  5.4kb\n\n⚡ Done in 1ms\nPRD prompt test passed.\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:scripts\n> node tests/scripts.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-agentFiles.cjs  26.1kb\n\n⚡ Done in 1ms\nAgent Board script tests passed.\n"
+      }
+    ]
+  },
+  "shipResult": {
+    "mode": "local-merge",
+    "branch": "agent-board/TASK-009-theme-agent-board-webview-with-vs-code-theme-var",
+    "shippedAt": "2026-07-17T21:10:00.000Z",
+    "mergedInto": "main",
+    "mergeCommit": "be68606"
+  },
+  "lastUpdated": "2026-07-17T21:04:46.036Z"
 }

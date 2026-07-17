@@ -1,7 +1,7 @@
 {
   "id": "TASK-008",
   "title": "Send human review feedback back to building",
-  "status": "human-review",
+  "status": "done",
   "priority": "high",
   "assignedAgent": "codex",
   "qaAgent": "codex",
@@ -97,6 +97,11 @@
       "timestamp": "2026-07-17T20:55:18.677Z",
       "actor": "codex",
       "message": "QA passed. Moved task to human-review."
+    },
+    {
+      "timestamp": "2026-07-17T21:04:40.748Z",
+      "actor": "vscode",
+      "message": "Marked done."
     }
   ],
   "claimedBy": "codex",
@@ -128,6 +133,12 @@
       }
     ]
   },
-  "shipResult": null,
-  "lastUpdated": "2026-07-17T20:55:18.677Z"
+  "shipResult": {
+    "mode": "local-merge",
+    "branch": "agent-board/TASK-008-send-human-review-feedback-back-to-building",
+    "shippedAt": "2026-07-17T21:10:00.000Z",
+    "mergedInto": "main",
+    "mergeCommit": "d214679"
+  },
+  "lastUpdated": "2026-07-17T21:04:40.749Z"
 }

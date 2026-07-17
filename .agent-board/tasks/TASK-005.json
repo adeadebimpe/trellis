@@ -139,6 +139,12 @@
       }
     ]
   },
-  "shipResult": null,
+  "shipResult": {
+    "mode": "local-merge",
+    "branch": "agent-board/TASK-005-make-project-context-optional-inferred-and-autos",
+    "shippedAt": "2026-07-17T21:10:00.000Z",
+    "mergedInto": "main",
+    "mergeCommit": "90c8d6c"
+  },
   "lastUpdated": "2026-07-17T20:56:09.814Z"
 }

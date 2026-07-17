@@ -132,6 +132,12 @@
       }
     ]
   },
-  "shipResult": null,
+  "shipResult": {
+    "mode": "local-merge",
+    "branch": "agent-board/TASK-007-automatically-repair-failed-qa",
+    "shippedAt": "2026-07-17T21:10:00.000Z",
+    "mergedInto": "main",
+    "mergeCommit": "d214679"
+  },
   "lastUpdated": "2026-07-17T20:56:23.336Z"
 }
