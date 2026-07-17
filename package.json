@@ -73,7 +73,18 @@
         "command": "agentBoard.freshStart",
         "title": "Agent Board: Fresh Start"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Agent Board",
+      "properties": {
+        "agentBoard.autoContinue": {
+          "type": "boolean",
+          "default": true,
+          "title": "Automatically Continue Ready Tasks",
+          "description": "Start the next highest-priority Ready for Agent task when no build terminal is running."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",
