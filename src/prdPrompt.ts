@@ -17,6 +17,25 @@ export function getPrdSourceBrief(task: AgentBoardTask): string {
 
 export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): string {
   const userBrief = getPrdSourceBrief(task);
+  const projectContext = compactObject({
+    contextNotes: project.contextNotes,
+    overview: isDefaultOverview(project.overview) ? '' : project.overview,
+    goals: project.goals,
+    architectureNotes: project.architectureNotes,
+    codingRules: project.codingRules,
+    agentRules: project.agentRules,
+    validationCommands: project.validationCommands,
+    designRules: project.designRules,
+    glossary: project.glossary,
+    inference: {
+      packageManager: project.inference?.packageManager,
+      scripts: project.inference?.scripts,
+      detectedFiles: project.inference?.detectedFiles,
+      likelyStack: project.inference?.likelyStack,
+      suggestedValidation: project.inference?.suggestedValidation
+    }
+  });
+  const input = compactObject({ userBrief, projectContext });
   return [
     'You are a product/spec agent. Create an implementation-ready PRD for a coding agent.',
     'Return strict JSON only. Do not include markdown, commentary, or code fences.',
@@ -45,34 +64,37 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '}',
     '',
     'Input:',
-    JSON.stringify({
-      userBrief,
-      taskTitle: task.title,
-      taskId: task.id,
-      priority: task.priority,
-      assignedAgent: task.assignedAgent,
-      qaAgent: task.qaAgent,
-      existingGeneratedDescription: task.description,
-      existingAcceptanceCriteria: task.acceptanceCriteria,
-      existingQaChecklist: task.qaChecklist,
-      existingDesignQaChecklist: task.designQaChecklist,
-      existingValidationCommands: task.validationCommands,
-      existingConstraints: task.constraints,
-      relevantFiles: task.relevantFiles,
-      projectContext: {
-        contextNotes: project.contextNotes,
-        overview: project.overview,
-        goals: project.goals,
-        architectureNotes: project.architectureNotes,
-        codingRules: project.codingRules,
-        agentRules: project.agentRules,
-        validationCommands: project.validationCommands,
-        designRules: project.designRules,
-        glossary: project.glossary,
-        inference: project.inference
-      }
-    }, null, 2)
+    JSON.stringify(input, null, 2)
   ].join('\n');
+}
+
+const DEFAULT_PROJECT_OVERVIEW = 'Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.';
+
+function isDefaultOverview(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() === DEFAULT_PROJECT_OVERVIEW;
+}
+
+function compactObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => {
+    const compacted = compactValue(entry);
+    return compacted === undefined ? [] : [[key, compacted]];
+  }));
+}
+
+function compactValue(value: unknown): unknown | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (Array.isArray(value)) {
+    const compacted = value.map(compactValue).filter((entry) => entry !== undefined);
+    return compacted.length ? compacted : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const compacted = compactObject(value as Record<string, unknown>);
+    return Object.keys(compacted).length ? compacted : undefined;
+  }
+  return value ?? undefined;
 }
 
 export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBoardTask, project: ProjectContext): AgentSpecPatch {

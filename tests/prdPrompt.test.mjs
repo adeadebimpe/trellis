@@ -65,14 +65,56 @@ assert.equal(getPrdSourceBrief(task), task.brief);
 const prompt = buildPrdPrompt(task, project);
 assert.match(prompt, /userBrief/);
 assert.match(prompt, /Let shoppers save a delivery note/);
-assert.match(prompt, /existingGeneratedDescription/);
 assert.match(prompt, /Do not treat task ids, task JSON fields, Agent Board internals, or projectContext text as the feature request/);
 assert.match(prompt, /Do not write about updating task JSON/);
-assert.ok(prompt.indexOf('Let shoppers save a delivery note') < prompt.indexOf('TASK-003 JSON has'));
+assert.doesNotMatch(prompt, /TASK-003 JSON has/);
+assert.doesNotMatch(prompt, /existingGenerated/);
+assert.doesNotMatch(prompt, /"taskId"|"taskTitle"|"priority"|"assignedAgent"|"qaAgent"/);
 
 assert.match(prompt, /relevantFiles/);
 assert.match(prompt, /Explore the repository/);
 assert.match(prompt, /"title": "string"/);
+
+const serializedInput = JSON.parse(prompt.slice(prompt.indexOf('Input:') + 'Input:'.length).trim());
+assert.deepEqual(Object.keys(serializedInput), ['userBrief', 'projectContext']);
+assert.equal(serializedInput.userBrief, task.brief);
+assert.equal(serializedInput.projectContext.overview, project.overview);
+assert.deepEqual(serializedInput.projectContext.inference.detectedFiles, ['package.json']);
+assert.equal(serializedInput.projectContext.inference.lastInferred, undefined);
+
+const minimalPrompt = buildPrdPrompt({
+  ...task,
+  title: 'Old generated title',
+  description: 'Old generated description that must not be reused.',
+  acceptanceCriteria: ['Old acceptance criterion'],
+  qaChecklist: ['Old QA step'],
+  designQaChecklist: ['Old design step'],
+  validationCommands: ['old validation command'],
+  relevantFiles: ['old/generated/file.ts'],
+  constraints: ['Old generated constraint']
+}, {
+  ...project,
+  contextNotes: '   ',
+  overview: 'Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.',
+  goals: [],
+  architectureNotes: '',
+  codingRules: [],
+  agentRules: [],
+  validationCommands: [],
+  designRules: [],
+  glossary: [],
+  inference: {
+    packageManager: '',
+    scripts: [],
+    detectedFiles: [],
+    likelyStack: [],
+    suggestedValidation: [],
+    lastInferred: '2026-06-06T00:00:00.000Z'
+  }
+});
+const minimalInput = JSON.parse(minimalPrompt.slice(minimalPrompt.indexOf('Input:') + 'Input:'.length).trim());
+assert.deepEqual(minimalInput, { userBrief: task.brief });
+assert.doesNotMatch(minimalPrompt, /Old generated|old\/generated|old validation/);
 
 const patch = normalizeSpecPatch({
   title: 'Delivery notes at checkout.',
