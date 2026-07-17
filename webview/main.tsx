@@ -449,7 +449,7 @@ function App(): JSX.Element {
                       <strong>{task.id}</strong>
                       <em>{task.priority}</em>
                     </span>
-                    <span className="cardTitle">{task.title || 'Untitled task'}</span>
+                    <span className="cardTitle" title={task.title || 'Untitled task'}>{task.title || 'Untitled task'}</span>
                     <span className="agentLine">
                       <span>{task.assignedAgent}</span>
                       <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
@@ -504,7 +504,7 @@ function App(): JSX.Element {
                 {saveState === 'saved' && ' · saved'}
                 {saveState === 'error' && ' · save failed'}
               </p>
-              <input className="titleInput" placeholder="Untitled task" value={draft.title} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
+              <input className="titleInput" placeholder="Untitled task" title={draft.title || undefined} value={draft.title} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
             </div>
             <div className="drawerHeaderActions">
               <button
