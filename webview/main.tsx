@@ -130,6 +130,8 @@ function App(): JSX.Element {
   const projectDirty = useRef(false);
   const projectEditVersion = useRef(0);
   const projectSentVersion = useRef(0);
+  const [reviewFeedback, setReviewFeedback] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const selected = state?.tasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -169,6 +171,7 @@ function App(): JSX.Element {
       if (event.data.type === 'error') {
         setSaveState('error');
         setProjectSaveState('error');
+        setReviewSubmitting(false);
       }
       if (event.data.type === 'saved-project') {
         if (projectEditVersion.current === projectSentVersion.current) {
@@ -183,6 +186,10 @@ function App(): JSX.Element {
           setProjectDraft(cloneProject(project));
           setProjectOpen(true);
         }
+      }
+      if (event.data.type === 'review-feedback-sent') {
+        setReviewFeedback('');
+        setReviewSubmitting(false);
       }
       if (event.data.type === 'select-task') {
         setSelectedId(event.data.id);
@@ -238,6 +245,8 @@ function App(): JSX.Element {
       setComposerOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    setReviewFeedback('');
+    setReviewSubmitting(false);
   }, [selectedId]);
 
   const updateDraft = (next: Task) => {
@@ -574,22 +583,53 @@ function App(): JSX.Element {
               />
             )}
             {draft.status === 'building' && (
-              <Action label="Ready for QA" onClick={() => sendAction(draft, 'mark-ready-qa')} primary />
+              <p className="automationHint">
+                {(draft.qaNotes ?? []).length
+                  ? 'The build agent is repairing the latest QA feedback. QA will run again automatically.'
+                  : 'QA starts automatically after the build agent validates and completes this task.'}
+              </p>
             )}
-            {(draft.status === 'ready-for-qa' || draft.status === 'failed-qa') && (
-              <Action
-                label="Start QA"
-                onClick={() => sendAction(draft, 'start-qa')}
-                primary
-                disabled={draft.qaAgent === 'unassigned'}
-                title={draft.qaAgent === 'unassigned' ? 'Assign a QA agent first.' : undefined}
-              />
+            {draft.status === 'ready-for-qa' && (
+              <Action label="QA is starting automatically…" onClick={() => undefined} disabled />
+            )}
+            {draft.status === 'failed-qa' && (
+              <Action label="Returning to build for repair…" onClick={() => undefined} disabled />
             )}
             {draft.status === 'qa-running' && (
-              <Action label="Pass QA" onClick={() => sendAction(draft, 'pass-qa')} primary />
+              <p className="automationHint">QA is running and will record pass or fail automatically.</p>
             )}
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
+            )}
+            {draft.status === 'human-review' && (
+              <section className="reviewPanel" aria-label="Request changes">
+                <div>
+                  <span className="reviewLabel">Request changes</span>
+                  <p>Describe what needs another pass. Your comment is added to the task history and the build agent starts immediately.</p>
+                </div>
+                <textarea
+                  value={reviewFeedback}
+                  onChange={(event) => setReviewFeedback(event.target.value)}
+                  placeholder="For example: Keep the inferred context editable after saving, and preserve my existing architecture notes."
+                  rows={4}
+                />
+                <button
+                  className="danger reviewSubmit"
+                  disabled={!reviewFeedback.trim() || reviewSubmitting || draft.assignedAgent === 'unassigned'}
+                  title={draft.assignedAgent === 'unassigned' ? 'Assign a build agent before requesting changes.' : undefined}
+                  onClick={() => {
+                    setReviewSubmitting(true);
+                    vscode.postMessage({
+                      type: 'request-changes',
+                      id: draft.id,
+                      feedback: reviewFeedback,
+                      expectedLastUpdated: lastKnownUpdatedRef.current
+                    });
+                  }}
+                >
+                  {reviewSubmitting ? 'Sending back…' : 'Send back to Building'}
+                </button>
+              </section>
             )}
             {draft.status === 'human-review' && (
               <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />

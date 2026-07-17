@@ -19,6 +19,10 @@ const execFileAsync = promisify(execFile);
 type AgentKind = 'build' | 'qa';
 const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
 const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
+const autoQaStarting = new Set<string>();
+const autoQaAttemptedVersions = new Map<string, string>();
+const autoRepairStarting = new Set<string>();
+const autoRepairAttemptedVersions = new Map<string, string>();
 
 type CliAgent = Exclude<AssignedAgent, 'unassigned'>;
 let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
@@ -116,6 +120,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  // Resume the automatic handoff for tasks that became QA-ready while the
+  // extension host was stopped. Existing QA terminals are reclaimed above.
+  void refreshBoard();
 }
 
 async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promise<void> {
@@ -211,6 +219,32 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await storage.moveTask(message.id, message.status, message.expectedLastUpdated);
         await postState();
         break;
+      case 'request-changes': {
+        const feedback = String(message.feedback ?? '').trim();
+        if (!feedback) {
+          throw new Error('Add a review comment before sending the task back to Building.');
+        }
+        const current = findTask((await storage.loadBoardState()).tasks, message.id);
+        if (current.status !== 'human-review') {
+          throw new Error('Only tasks in Human Review can be sent back to Building.');
+        }
+        const now = new Date().toISOString();
+        await storage.saveTask({
+          task: {
+            id: current.id,
+            status: 'building',
+            activityLog: [
+              ...(current.activityLog ?? []),
+              { timestamp: now, actor: 'human-review', message: `Changes requested: ${feedback}` }
+            ]
+          },
+          expectedLastUpdated: message.expectedLastUpdated
+        });
+        await runStartBuildAction(current.id);
+        webview.postMessage({ type: 'review-feedback-sent', id: current.id });
+        await postState();
+        break;
+      }
       case 'delete-task':
         await storage.deleteTask(message.id);
         webview.postMessage({ type: 'task-deleted', id: message.id });
@@ -510,7 +544,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
       : 'Your working directory is the repository root.',
     `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
-    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing.`,
+    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest activityLog and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
     'If blocked, update the task with a blocker note and move it to human-review.'
@@ -531,6 +565,22 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
     `Run node "${scripts}/run-validation.mjs" ${id} to verify the validation commands pass, plus any functional checks the task calls for. Record findings in qaEvidence.`,
     `If QA passes, run: node "${scripts}/pass-qa.mjs" ${id} "QA passed."`,
     `If QA fails, run: node "${scripts}/fail-qa.mjs" ${id} "specific failure reason"`
+  ].join('\n');
+}
+
+function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.agent-board/scripts`;
+  return [
+    `You are the implementation agent automatically repairing failed QA for Agent Board task ${id}.`,
+    worktreePath
+      ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
+      : 'Work in the repository root.',
+    `Read the durable task record at ${taskFile}, especially the latest qaNotes, qaEvidence, activityLog, and failed validation output.`,
+    `Also read ${mainRoot}/.agent-board/project.json before editing.`,
+    'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
+    `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
+    'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
   ].join('\n');
 }
 
@@ -579,8 +629,78 @@ function scheduleRefresh(): void {
     clearTimeout(refreshTimer);
   }
   refreshTimer = setTimeout(() => {
-    void postState();
+    void refreshBoard();
   }, 150);
+}
+
+async function refreshBoard(): Promise<void> {
+  await startReadyQaTasks();
+  await startFailedQaRepairs();
+  await postState();
+}
+
+async function startReadyQaTasks(): Promise<void> {
+  const storage = await resolveStorage();
+  const { tasks } = await storage.loadBoardState();
+  const ready = tasks.filter((task) =>
+    task.status === 'ready-for-qa'
+    && !agentTerminals.has(task.id)
+    && !autoQaStarting.has(task.id)
+    && autoQaAttemptedVersions.get(task.id) !== task.lastUpdated
+  );
+
+  await Promise.all(ready.map(async (task) => {
+    autoQaStarting.add(task.id);
+    autoQaAttemptedVersions.set(task.id, task.lastUpdated);
+    try {
+      await runStartQaAction(task.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Automatic QA could not start for ${task.id}. ${message}`);
+    } finally {
+      autoQaStarting.delete(task.id);
+    }
+  }));
+}
+
+async function startFailedQaRepairs(): Promise<void> {
+  const storage = await resolveStorage();
+  const { tasks } = await storage.loadBoardState();
+  const failed = tasks.filter((task) =>
+    task.status === 'failed-qa'
+    && agentTerminals.get(task.id)?.kind !== 'build'
+    && !autoRepairStarting.has(task.id)
+    && autoRepairAttemptedVersions.get(task.id) !== task.lastUpdated
+  );
+
+  await Promise.all(failed.map(async (task) => {
+    autoRepairStarting.add(task.id);
+    autoRepairAttemptedVersions.set(task.id, task.lastUpdated);
+    try {
+      const agent = requireAgent(task.assignedAgent, 'Assign a Codex or Claude build agent before automatic repair can start.');
+      await ensureAgentCliAvailable(agent);
+      const now = new Date().toISOString();
+      const repairing = await storage.saveTask({
+        task: {
+          id: task.id,
+          status: 'building',
+          activityLog: [
+            ...(task.activityLog ?? []),
+            { timestamp: now, actor: 'vscode', message: 'QA failed. Returned to building and started an automatic repair.' }
+          ]
+        },
+        expectedLastUpdated: task.lastUpdated
+      });
+      const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName);
+      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath);
+      vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Automatic QA repair could not start for ${task.id}. ${message}`);
+    } finally {
+      autoRepairStarting.delete(task.id);
+    }
+  }));
 }
 
 async function postState(): Promise<void> {
