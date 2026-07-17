@@ -81,6 +81,7 @@ interface BoardState {
   tasks: Task[];
   project: ProjectContext;
   liveTerminals: string[];
+  generatingIds: string[];
   settings: {
     specProvider?: string;
     specProviderLabel: string;
@@ -146,6 +147,8 @@ function App(): JSX.Element {
     const listener = (event: MessageEvent) => {
       if (event.data.type === 'state') {
         setState(event.data.state);
+        // Restore in-flight PRD indicators after the webview is closed and reopened.
+        setGeneratingIds(event.data.state.generatingIds ?? []);
         if (selectedId) {
           const fresh = event.data.state.tasks.find((task: Task) => task.id === selectedId);
           if (fresh) {
@@ -193,6 +196,10 @@ function App(): JSX.Element {
       }
       if (event.data.type === 'select-task') {
         setSelectedId(event.data.id);
+      }
+      if (event.data.type === 'auto-select-task') {
+        // Open the finished task only if the user has not focused another task meanwhile.
+        setSelectedId((current) => (current === null ? event.data.id : current));
       }
       if (event.data.type === 'spec-generating') {
         setGeneratingIds((ids) => (ids.includes(event.data.id) ? ids : [...ids, event.data.id]));
@@ -360,6 +367,9 @@ function App(): JSX.Element {
         <div>
           <h1>Agent Board</h1>
         </div>
+        {generatingIds.length > 0 && (
+          <p className="topbarNote">Drafting PRD… You can close this — generation continues in the background.</p>
+        )}
         <div className="telemetry">
           <div className="menuWrap">
             <button className="ghost moreButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>⋯</button>
