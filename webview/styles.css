@@ -509,7 +509,10 @@ select:focus-visible {
 }
 
 .cardTitle {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
@@ -583,7 +586,12 @@ select:focus-visible {
   letter-spacing: -0.01em;
   outline: 0;
   padding: 0;
+  text-overflow: ellipsis;
   width: 100%;
+}
+
+.titleInput:focus {
+  text-overflow: clip;
 }
 
 .drawerTitle {

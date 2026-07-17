@@ -15,6 +15,22 @@ export function getPrdSourceBrief(task: AgentBoardTask): string {
   return String(task.brief ?? '').trim();
 }
 
+export const TITLE_MAX_LENGTH = 60;
+
+// Clip display titles at a word boundary, appending a single '…' so the result
+// (ellipsis included) never exceeds maxLength. Falls back to a hard clip when
+// the first word alone exceeds the budget.
+export function clipTitle(text: string, maxLength = TITLE_MAX_LENGTH): string {
+  const trimmed = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  const budget = trimmed.slice(0, maxLength - 1);
+  const lastSpace = budget.lastIndexOf(' ');
+  const head = lastSpace > 0 ? budget.slice(0, lastSpace) : budget;
+  return `${head.replace(/[\s.,;:!?…-]+$/g, '')}…`;
+}
+
 export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): string {
   const userBrief = getPrdSourceBrief(task);
   return [
@@ -30,7 +46,7 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '- Keep the PRD specific to the requested product behavior, user outcome, edge cases, and validation.',
     '- Explore the repository you are running in and list the existing files and paths most relevant to implementing this brief in relevantFiles, so the implementing agent starts in the right place.',
     '',
-    '- Set title to a short, specific task name (max 72 characters, no trailing punctuation) that summarizes the userBrief.',
+    '- Set title to a short, specific task name (max 60 characters, no trailing punctuation) that summarizes the userBrief.',
     '',
     'Return this exact JSON shape:',
     '{',
@@ -87,7 +103,7 @@ export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBo
   };
   const title = asString(value.title).replace(/[.!?]+$/g, '').trim();
   if (title) {
-    patch.title = title.length > 72 ? `${title.slice(0, 69).trimEnd()}...` : title;
+    patch.title = clipTitle(title);
   }
   return patch;
 }
@@ -106,8 +122,7 @@ export function deriveTaskTitle(task: Pick<AgentBoardTask, 'title' | 'brief' | '
     .replace(/^add\s+/i, '')
     .replace(/[.!?]+$/g, '')
     .trim();
-  const clipped = cleaned.length > 72 ? `${cleaned.slice(0, 69).trimEnd()}...` : cleaned;
-  return clipped || task.id;
+  return clipTitle(cleaned) || task.id;
 }
 
 function asString(value: unknown): string {
