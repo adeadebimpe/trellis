@@ -125,11 +125,20 @@ function App(): JSX.Element {
   const draftRef = useRef<Task | null>(null);
   const saveTimerRef = useRef<number | undefined>(undefined);
   const lastKnownUpdatedRef = useRef<string | undefined>(undefined);
+  const projectSaveTimer = useRef<number | undefined>(undefined);
+  const projectDraftRef = useRef<ProjectContext | null>(null);
+  const projectDirty = useRef(false);
+  const projectEditVersion = useRef(0);
+  const projectSentVersion = useRef(0);
   const selected = state?.tasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  useEffect(() => {
+    projectDraftRef.current = projectDraft;
+  }, [projectDraft]);
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
@@ -148,7 +157,9 @@ function App(): JSX.Element {
           }
         }
         if (projectOpen) {
-          setProjectDraft(cloneProject(event.data.state.project));
+          if (!projectDirty.current) {
+            setProjectDraft(cloneProject(event.data.state.project));
+          }
         }
       }
       if (event.data.type === 'saved') {
@@ -160,8 +171,18 @@ function App(): JSX.Element {
         setProjectSaveState('error');
       }
       if (event.data.type === 'saved-project') {
-        setProjectSaveState('saved');
-        window.setTimeout(() => setProjectSaveState('idle'), 1400);
+        if (projectEditVersion.current === projectSentVersion.current) {
+          projectDirty.current = false;
+          setProjectSaveState('saved');
+          window.setTimeout(() => setProjectSaveState('idle'), 2200);
+        }
+      }
+      if (event.data.type === 'open-project-context') {
+        const project = event.data.project ?? state?.project;
+        if (project) {
+          setProjectDraft(cloneProject(project));
+          setProjectOpen(true);
+        }
       }
       if (event.data.type === 'select-task') {
         setSelectedId(event.data.id);
@@ -186,7 +207,13 @@ function App(): JSX.Element {
     window.addEventListener('message', listener);
     vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
-  }, [selectedId, projectOpen]);
+  }, [selectedId, projectOpen, state?.project]);
+
+  useEffect(() => () => {
+    if (projectSaveTimer.current !== undefined) {
+      window.clearTimeout(projectSaveTimer.current);
+    }
+  }, []);
 
   const flushPendingSave = () => {
     if (saveTimerRef.current !== undefined) {
@@ -263,6 +290,37 @@ function App(): JSX.Element {
   const moveTask = (id: string, status: TaskStatus) => {
     const task = state?.tasks.find((item) => item.id === id);
     vscode.postMessage({ type: 'move-task', id, status, expectedLastUpdated: task?.lastUpdated });
+  };
+
+  const updateProject = (next: ProjectContext) => {
+    setProjectDraft(next);
+    projectDraftRef.current = next;
+    projectDirty.current = true;
+    projectEditVersion.current += 1;
+    setProjectSaveState('saving');
+    if (projectSaveTimer.current !== undefined) {
+      window.clearTimeout(projectSaveTimer.current);
+    }
+    projectSaveTimer.current = window.setTimeout(() => {
+      const current = projectDraftRef.current;
+      if (current) {
+        projectSentVersion.current = projectEditVersion.current;
+        vscode.postMessage({ type: 'save-project', project: current });
+      }
+    }, 700);
+  };
+
+  const closeProject = () => {
+    if (projectSaveTimer.current !== undefined) {
+      window.clearTimeout(projectSaveTimer.current);
+      projectSaveTimer.current = undefined;
+    }
+    if (projectDirty.current && projectDraftRef.current) {
+      projectSentVersion.current = projectEditVersion.current;
+      vscode.postMessage({ type: 'save-project', project: projectDraftRef.current });
+    }
+    setProjectDraft(null);
+    setProjectOpen(false);
   };
 
   if (state && !state.settings.setupComplete) {
@@ -606,9 +664,13 @@ function App(): JSX.Element {
               <h2 className="drawerTitle">Project Context</h2>
             </div>
             <button className="ghost" onClick={() => {
-              setProjectDraft(null);
-              setProjectOpen(false);
-            }}>Close</button>
+              closeProject();
+            }}>Skip for now</button>
+          </div>
+
+          <div className="contextIntro">
+            <span className="contextOptional">Optional</span>
+            <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
           </div>
 
           <div className="contextBlock">
@@ -617,7 +679,7 @@ function App(): JSX.Element {
               big
               placeholder="Paste anything agents should know before building: product overview, architecture notes, conventions, constraints, links. This goes to PRD generation and is stored in .agent-board/project.json for agents."
               value={projectDraft.contextNotes ?? ''}
-              onChange={(value) => setProjectDraft({ ...projectDraft, contextNotes: value })}
+              onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
             />
           </div>
 
@@ -627,30 +689,22 @@ function App(): JSX.Element {
               disabled={projectSaveState === 'saving'}
               onClick={() => {
                 setProjectSaveState('saving');
+                setProjectFieldsOpen(true);
                 vscode.postMessage({ type: 'infer-project' });
               }}
             >
               Infer from repo
             </button>
-            <button
-              className="primary"
-              disabled={projectSaveState === 'saving'}
-              onClick={() => {
-                setProjectSaveState('saving');
-                vscode.postMessage({ type: 'save-project', project: projectDraft });
-              }}
-            >
-              {projectSaveState === 'saving' ? 'Saving...' : 'Save context'}
-            </button>
-            <p>
-              {projectSaveState === 'saved' && 'Saved. '}
-              {projectSaveState === 'error' && 'Save failed. '}
-              Last updated {new Date(projectDraft.lastUpdated).toLocaleString()}
+            <p className={`autosaveStatus ${projectSaveState}`} role="status" aria-live="polite">
+              {projectSaveState === 'saving' && 'Saving changes…'}
+              {projectSaveState === 'saved' && 'Saved automatically'}
+              {projectSaveState === 'error' && 'Could not save — your edits are still here'}
+              {projectSaveState === 'idle' && `Autosaved · ${new Date(projectDraft.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
             </p>
           </div>
 
           <div className="contextBlock">
-            <ListField label="Validation Commands (used by QA runs, one per line)" value={projectDraft.validationCommands} onChange={(value) => setProjectDraft({ ...projectDraft, validationCommands: splitLines(value) })} />
+            <ListField label="Validation commands (used by QA runs, one per line)" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
           </div>
 
           <button className="sectionToggle" onClick={() => setProjectFieldsOpen((open) => !open)}>
@@ -658,13 +712,13 @@ function App(): JSX.Element {
           </button>
           {projectFieldsOpen && (
             <div className="formGrid">
-              <Field label="Project Overview" value={projectDraft.overview} onChange={(value) => setProjectDraft({ ...projectDraft, overview: value })} />
-              <ListField label="Project Goals" value={projectDraft.goals} onChange={(value) => setProjectDraft({ ...projectDraft, goals: splitLines(value) })} />
-              <Field label="Architecture Notes" value={projectDraft.architectureNotes} onChange={(value) => setProjectDraft({ ...projectDraft, architectureNotes: value })} />
-              <ListField label="Coding Rules" value={projectDraft.codingRules} onChange={(value) => setProjectDraft({ ...projectDraft, codingRules: splitLines(value) })} />
-              <ListField label="Agent Rules" value={projectDraft.agentRules} onChange={(value) => setProjectDraft({ ...projectDraft, agentRules: splitLines(value) })} />
-              <ListField label="Design Rules" value={projectDraft.designRules} onChange={(value) => setProjectDraft({ ...projectDraft, designRules: splitLines(value) })} />
-              <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => setProjectDraft({ ...projectDraft, glossary: splitLines(value) })} />
+              <Field label="Project overview" value={projectDraft.overview} onChange={(value) => updateProject({ ...projectDraft, overview: value })} />
+              <ListField label="Project goals" value={projectDraft.goals} onChange={(value) => updateProject({ ...projectDraft, goals: splitLines(value) })} />
+              <Field label="Architecture notes" value={projectDraft.architectureNotes} onChange={(value) => updateProject({ ...projectDraft, architectureNotes: value })} />
+              <ListField label="Coding rules" value={projectDraft.codingRules} onChange={(value) => updateProject({ ...projectDraft, codingRules: splitLines(value) })} />
+              <ListField label="Agent rules" value={projectDraft.agentRules} onChange={(value) => updateProject({ ...projectDraft, agentRules: splitLines(value) })} />
+              <ListField label="Design rules" value={projectDraft.designRules} onChange={(value) => updateProject({ ...projectDraft, designRules: splitLines(value) })} />
+              <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => updateProject({ ...projectDraft, glossary: splitLines(value) })} />
             </div>
           )}
 

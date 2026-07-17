@@ -802,9 +802,38 @@ input.textInput {
   border-top: 1px solid var(--line);
   display: grid;
   gap: 10px;
-  grid-template-columns: max-content max-content 1fr;
+  grid-template-columns: max-content 1fr;
   margin: 18px 0;
   padding: 14px 0;
+}
+
+.contextIntro {
+  align-items: flex-start;
+  background: linear-gradient(135deg, var(--accent-soft), transparent 72%);
+  border: 1px solid rgba(94, 106, 210, 0.28);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px;
+}
+
+.contextIntro p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.contextOptional {
+  background: rgba(94, 106, 210, 0.2);
+  border-radius: 999px;
+  color: #aeb5ff;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  text-transform: uppercase;
 }
 
 .contextBlock {
@@ -867,6 +896,19 @@ textarea::placeholder {
   color: var(--muted);
   font-size: 12px;
   margin: 0;
+}
+
+.autosaveStatus {
+  justify-self: end;
+  text-align: right;
+}
+
+.autosaveStatus.saved {
+  color: var(--green);
+}
+
+.autosaveStatus.error {
+  color: var(--red);
 }
 
 .inferencePanel {

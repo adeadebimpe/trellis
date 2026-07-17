@@ -259,6 +259,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         signInCodexCli();
         await detectAvailableAgents(true);
         await postState();
+        webview.postMessage({ type: 'open-project-context', project: (await storage.loadBoardState()).project });
         break;
       case 'sign-in-claude':
         await setSpecProvider(context, 'claude-code');
@@ -266,6 +267,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         signInClaudeCode();
         await detectAvailableAgents(true);
         await postState();
+        webview.postMessage({ type: 'open-project-context', project: (await storage.loadBoardState()).project });
         break;
       case 'configure-spec-provider':
         await configureSpecProvider(context);
