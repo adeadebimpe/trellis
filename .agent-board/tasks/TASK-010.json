@@ -1,0 +1,85 @@
+{
+  "id": "TASK-010",
+  "title": "Defer opening task panel until PRD generation completes",
+  "status": "ready-for-agent",
+  "priority": "medium",
+  "assignedAgent": "claude",
+  "qaAgent": "unassigned",
+  "brief": "When creating new task, don't open task panel until prd has finished generating. Indicate that User can close if they want as the task would go on creating",
+  "description": "Change the new-task creation flow so the task detail panel does not open immediately when a task is created from the composer. Today, the 'create-task' handler in src/extension.ts (around lines 191-203) creates the task, immediately posts a 'select-task' message (which the webview handles by calling setSelectedId, opening the task detail panel), and only then runs PRD generation via runGenerateSpecAction. The user is dropped into a mostly-empty detail panel that fills in later.\n\nDesired behavior: when the user submits a brief from the composer ('Generate PRD' / Enter), the task is created and appears on the board in its generating state (the existing 'drafting…' indicator driven by the 'spec-generating' / 'spec-generated' messages and the generatingIds state in webview/main.tsx), but the detail panel stays closed. While the PRD is generating, show a clear, visible indication near the new task card or in the board UI that (a) the PRD is being drafted and (b) the user is free to close the board or navigate away — generation continues in the background and the task will keep being created regardless. When PRD generation finishes successfully, auto-open the task detail panel for that task (post 'select-task' at that point instead of at creation time), unless the user has since selected a different task or closed/navigated away — in that case do not steal focus; the completed task simply updates on the board. If PRD generation fails or no provider is available, do not auto-open the panel; keep the existing warning/error notifications and leave the task on the board with its brief intact so the user can open it and retry manually. Manual task opening by clicking a card must continue to work at all times, including while a PRD is generating for that task.\n\nImplementation notes: the creation flow is extension-driven (webview posts 'create-task', extension posts 'select-task' then broadcasts 'spec-generating'/'spec-generated'). Move the 'select-task' post to after runGenerateSpecAction succeeds, guard it against failure paths in runGenerateSpecAction (src/extension.ts around lines 321-380), and add the 'you can close this — generation continues' hint in webview/main.tsx (the board card already shows 'drafting…' at line ~378; the draftingNote pattern at lines 566-567 shows the existing style for such hints). Handle the no-brief creation path (create-task without brief) — that path has no PRD generation, so it should keep opening the panel immediately as today.",
+  "acceptanceCriteria": [
+    "Submitting a brief from the composer creates the task and shows it on the board, but does not open the task detail panel while the PRD is generating",
+    "While generating, the board shows an in-progress indicator for the new task plus a visible message telling the user they can close or navigate away and the task will continue being created in the background",
+    "When PRD generation completes successfully, the task detail panel opens automatically for that task with the generated title, description, and checklists populated",
+    "If the user has opened a different task or closed the webview panel during generation, focus is not stolen: the completed task updates on the board without forcibly opening its panel",
+    "If PRD generation fails or no CLI provider is found, the panel does not auto-open, the existing warning/error notification is shown, and the task remains on the board with its brief so the user can retry Generate PRD from the detail panel",
+    "Clicking a task card still opens the detail panel immediately at any time, including while that task's PRD is generating (showing the existing 'Drafting PRD…' state)",
+    "Creating a task with an empty brief (the no-PRD path) still opens the detail panel immediately as before",
+    "Closing and reopening the Agent Board webview during generation does not orphan the flow: the task appears with correct state and, if generation finished while closed, the board reflects the completed PRD"
+  ],
+  "qaChecklist": [
+    "Create a task from the composer with a brief and confirm the detail panel stays closed until the 'Generated PRD' activity completes, then opens automatically",
+    "During generation, verify the board card shows the drafting indicator and the message stating the user can close while creation continues",
+    "During generation, click a different task card, wait for generation to finish, and confirm the finished task does not steal selection or overwrite the open draft",
+    "During generation, close the Agent Board webview entirely, reopen it after generation completes, and confirm the task shows the generated PRD without errors",
+    "Simulate PRD failure (e.g. no Claude/Codex CLI available or provider error) and confirm no panel opens, the error/warning notification appears, and the task keeps its brief for retry",
+    "Create a task with an empty brief and confirm the detail panel still opens immediately",
+    "Create two tasks in quick succession and confirm generating indicators, completion, and panel-opening behavior track the correct task ids without cross-talk",
+    "Verify existing manual 'Generate PRD' from the detail panel (regenerate flow) is unchanged by the refactor"
+  ],
+  "designQaChecklist": [
+    "The 'PRD is drafting — you can close this, the task will keep creating' message matches existing hint styling (e.g. the draftingNote pattern) and does not shift board card layout",
+    "The generating indicator on the task card remains legible in both VS Code light and dark themes",
+    "The auto-opened detail panel on completion appears without visual flicker or a flash of empty fields",
+    "Message copy is concise, sentence-case, and consistent with existing Agent Board voice (e.g. 'Drafting title, PRD, and checklists from the brief…')"
+  ],
+  "validationCommands": [
+    "npm run typecheck",
+    "npm run compile",
+    "npm run test",
+    "npm run build"
+  ],
+  "relevantFiles": [
+    "src/extension.ts",
+    "webview/main.tsx",
+    "webview/styles.css",
+    "src/storage.ts",
+    "src/prdPrompt.ts",
+    "tests/prdPrompt.test.mjs"
+  ],
+  "constraints": [
+    "Follow existing project patterns: keep the webview extension-driven via postMessage/broadcast messages ('select-task', 'spec-generating', 'spec-generated') rather than introducing new state management",
+    "Do not change PRD generation logic itself (runGenerateSpecAction provider handling, storage writes, optimistic-concurrency via expectedLastUpdated) — only when the panel opens and what the board shows",
+    "Preserve the no-brief creation path and the manual card-click open path unchanged",
+    "Do not steal focus or overwrite an in-progress draft the user has open in the detail panel when generation completes",
+    "Keep changes scoped to this task; do not overwrite unrelated user or agent changes in the working tree"
+  ],
+  "agentNotes": "",
+  "qaNotes": [],
+  "qaEvidence": [],
+  "activityLog": [
+    {
+      "timestamp": "2026-07-17T20:57:45.632Z",
+      "actor": "vscode",
+      "message": "Created blank task."
+    },
+    {
+      "timestamp": "2026-07-17T20:58:42.477Z",
+      "actor": "claude-code",
+      "message": "Generated PRD."
+    },
+    {
+      "timestamp": "2026-07-17T21:01:25.101Z",
+      "actor": "vscode",
+      "message": "Marked ready for agent."
+    }
+  ],
+  "claimedBy": "",
+  "qaClaimedBy": "",
+  "branchName": "",
+  "worktreePath": "",
+  "claimedAt": "",
+  "lastValidation": null,
+  "shipResult": null,
+  "lastUpdated": "2026-07-17T21:01:28.288Z"
+}

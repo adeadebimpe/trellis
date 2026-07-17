@@ -20,6 +20,30 @@ type AgentKind = 'build' | 'qa';
 const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
 const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
 
+type CliAgent = Exclude<AssignedAgent, 'unassigned'>;
+let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
+
+function detectAvailableAgents(force = false): Promise<CliAgent[]> {
+  if (!detectedAgentsPromise || force) {
+    detectedAgentsPromise = Promise.all(
+      (['claude', 'codex'] as const).map((agent) =>
+        execFileAsync(agent, ['--version'], { timeout: 10000 }).then(() => agent, () => undefined)
+      )
+    ).then((results) => results.filter((agent): agent is CliAgent => Boolean(agent)));
+  }
+  return detectedAgentsPromise;
+}
+
+async function pickAutoAgent(): Promise<AssignedAgent> {
+  const available = await detectAvailableAgents();
+  const provider = activeContext ? getSpecProvider(activeContext) : undefined;
+  const preferred = provider === 'codex-cli' ? 'codex' : provider === 'claude-code' ? 'claude' : undefined;
+  if (preferred && available.includes(preferred)) {
+    return preferred;
+  }
+  return available[0] ?? 'unassigned';
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   activeContext = context;
   context.subscriptions.push(
@@ -164,11 +188,20 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
       case 'ready':
         await postState();
         break;
-      case 'create-task':
-        const task = await storage.createTask();
+      case 'create-task': {
+        const brief = String(message.brief ?? '').trim();
+        const autoAgent = await pickAutoAgent();
+        const task = await storage.createTask(brief
+          ? { brief, assignedAgent: autoAgent, qaAgent: autoAgent }
+          : undefined);
         webview.postMessage({ type: 'select-task', id: task.id });
         await postState();
+        if (brief) {
+          await runGenerateSpecAction(context, task.id, task.lastUpdated);
+          await postState();
+        }
         break;
+      }
       case 'save-task':
         await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated });
         webview.postMessage({ type: 'saved', id: message.task.id });
@@ -224,12 +257,14 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await setSpecProvider(context, 'codex-cli');
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         signInCodexCli();
+        await detectAvailableAgents(true);
         await postState();
         break;
       case 'sign-in-claude':
         await setSpecProvider(context, 'claude-code');
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         signInClaudeCode();
+        await detectAvailableAgents(true);
         await postState();
         break;
       case 'configure-spec-provider':
@@ -288,41 +323,65 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
     return;
   }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'Generating PRD...', cancellable: false },
-    async () => {
-      const provider = getSpecProvider(context);
-      if (!provider) {
-        vscode.window.showWarningMessage('Choose Codex, Claude, or OpenAI before generating a PRD.');
-        return;
-      }
+  broadcast({ type: 'spec-generating', id });
+  try {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Generating PRD...', cancellable: false },
+      async () => {
+        let provider = getSpecProvider(context);
+        if (!provider) {
+          // Fall back to whichever agent CLI is installed instead of blocking on setup.
+          const available = await detectAvailableAgents();
+          provider = available.includes('claude') ? 'claude-code' : available.includes('codex') ? 'codex-cli' : undefined;
+          if (provider) {
+            await setSpecProvider(context, provider);
+          }
+        }
+        if (!provider) {
+          vscode.window.showWarningMessage('No Claude or Codex CLI found. Sign in to an agent CLI or configure OpenAI before generating a PRD.');
+          return;
+        }
 
-      let aiPatch;
-      try {
-        aiPatch = await generateAgentSpecWithAi(context, task, state.project, storage.root.fsPath);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(`${specProviderLabel(provider)} could not generate the PRD. Task was not changed. ${message}`);
-        return;
+        let aiPatch;
+        try {
+          aiPatch = await generateAgentSpecWithAi(context, task, state.project, storage.root.fsPath);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(`${specProviderLabel(provider)} could not generate the PRD. Task was not changed. ${message}`);
+          return;
+        }
+        if (!aiPatch) {
+          vscode.window.showWarningMessage('PRD generation did not return a result. Task was not changed.');
+          return;
+        }
+        const { title: aiTitle, ...specPatch } = aiPatch;
+        const currentTitle = task.title?.trim() ?? '';
+        const derivedTitle = deriveTaskTitle({ ...task, title: '' });
+        const useAiTitle = Boolean(aiTitle) && (!currentTitle || currentTitle === derivedTitle);
+        const advanceToReady = task.status === 'backlog';
+        await storage.saveTask({
+          task: {
+            id,
+            title: useAiTitle ? aiTitle! : currentTitle || derivedTitle,
+            ...specPatch,
+            ...(advanceToReady ? { status: 'ready-for-agent' as const } : {}),
+            activityLog: [
+              ...(task.activityLog ?? []),
+              { timestamp: new Date().toISOString(), actor: provider, message: advanceToReady ? 'Generated PRD. Moved to ready-for-agent.' : 'Generated PRD.' }
+            ]
+          },
+          expectedLastUpdated
+        }, provider);
       }
-      if (!aiPatch) {
-        vscode.window.showWarningMessage('PRD generation did not return a result. Task was not changed.');
-        return;
-      }
-      await storage.saveTask({
-        task: {
-          id,
-          title: task.title?.trim() || deriveTaskTitle(task),
-          ...aiPatch,
-          activityLog: [
-            ...(task.activityLog ?? []),
-            { timestamp: new Date().toISOString(), actor: provider, message: 'Generated PRD.' }
-          ]
-        },
-        expectedLastUpdated
-      }, provider);
-    }
-  );
+    );
+  } finally {
+    broadcast({ type: 'spec-generated', id });
+  }
+}
+
+function broadcast(message: unknown): void {
+  panel?.webview.postMessage(message);
+  sidebarView?.webview.postMessage(message);
 }
 
 async function runStartBuildAction(id: string): Promise<void> {
@@ -538,7 +597,8 @@ async function postState(): Promise<void> {
       settings: {
         specProvider: provider,
         specProviderLabel: specProviderLabel(provider),
-        setupComplete: Boolean(provider || activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY))
+        setupComplete: Boolean(provider || activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY)),
+        autoAssignAgent: await pickAutoAgent()
       }
     }
   };

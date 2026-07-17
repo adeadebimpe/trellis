@@ -1,0 +1,133 @@
+{
+  "id": "TASK-008",
+  "title": "Send human review feedback back to building",
+  "status": "human-review",
+  "priority": "high",
+  "assignedAgent": "codex",
+  "qaAgent": "codex",
+  "brief": "In Human Review, allow the reviewer to add a comment and send the task back to Building. Persist the feedback and immediately relaunch the build agent with it.",
+  "description": "Add a focused request-changes workflow to Human Review. A non-empty reviewer comment is recorded durably in the task activity, the task transitions to building, and the assigned implementation agent launches in the existing worktree. The subsequent build continues through automatic QA and repair behavior.",
+  "acceptanceCriteria": [
+    "Human Review displays a clear feedback input and Send back to Building action.",
+    "The action requires a non-empty review comment.",
+    "The comment is persisted with a timestamp and human-review actor in the durable task record.",
+    "Submitting feedback changes the task to building and immediately launches the assigned build agent in the existing worktree.",
+    "The implementation agent can discover the latest human review feedback from its prompt/task record.",
+    "Ship and completion actions remain available for approved work."
+  ],
+  "qaChecklist": [
+    "Verify blank feedback cannot be submitted.",
+    "Submit feedback and verify activity history, building state, and one build terminal launch.",
+    "Verify the comment remains visible after state refresh.",
+    "Verify approved Human Review work can still be shipped or marked done.",
+    "Run typecheck, build, and tests."
+  ],
+  "designQaChecklist": [
+    "Request changes is visually distinct from approval/shipping.",
+    "The feedback input is comfortable in the narrow sidebar.",
+    "The action clearly communicates that it resumes agent work."
+  ],
+  "validationCommands": [
+    "npm run typecheck",
+    "npm run build",
+    "npm test"
+  ],
+  "relevantFiles": [
+    "src/extension.ts",
+    "webview/main.tsx",
+    "webview/styles.css"
+  ],
+  "constraints": [
+    "Build on TASK-006 and TASK-007 autonomous workflow changes.",
+    "Do not overwrite unrelated main-checkout changes."
+  ],
+  "agentNotes": "Follow-on to the automatic QA and repair branches, both cherry-picked into this task branch. Added a Human Review request-changes panel with required feedback and submission/error states. The extension validates the task is still in human-review, records the comment in activityLog with actor human-review, saves status building, then reuses the normal claim/build launch path. The build prompt now explicitly calls out recent activityLog and qaNotes feedback. Ship and Mark done remain available.",
+  "qaNotes": [
+    {
+      "timestamp": "2026-07-17T20:55:18.677Z",
+      "actor": "codex",
+      "message": "Verified required review feedback, durable human-review activity entry, guarded Human Review transition, immediate existing-worktree build launch, feedback-aware agent prompt, and preserved ship/done actions."
+    }
+  ],
+  "qaEvidence": [
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm test",
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm test"
+  ],
+  "activityLog": [
+    {
+      "timestamp": "2026-07-17T20:53:00.000Z",
+      "actor": "codex",
+      "message": "Created task for Human Review feedback and return-to-building workflow."
+    },
+    {
+      "timestamp": "2026-07-17T20:51:43.954Z",
+      "actor": "codex",
+      "message": "Created worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-008 on new branch agent-board/TASK-008-send-human-review-feedback-back-to-building."
+    },
+    {
+      "timestamp": "2026-07-17T20:55:00.000Z",
+      "actor": "codex",
+      "message": "Implemented durable Human Review feedback, return-to-building, immediate agent relaunch, and focused request-changes UI. Local typecheck, build, and tests passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:54:51.524Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:54:51.629Z",
+      "actor": "codex",
+      "message": "Moved task to ready-for-qa."
+    },
+    {
+      "timestamp": "2026-07-17T20:54:57.915Z",
+      "actor": "codex",
+      "message": "Started QA. Reusing existing worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-008 on branch agent-board/TASK-008-send-human-review-feedback-back-to-building."
+    },
+    {
+      "timestamp": "2026-07-17T20:55:18.565Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:55:18.677Z",
+      "actor": "codex",
+      "message": "QA passed. Moved task to human-review."
+    }
+  ],
+  "claimedBy": "codex",
+  "qaClaimedBy": "codex",
+  "branchName": "agent-board/TASK-008-send-human-review-feedback-back-to-building",
+  "worktreePath": "/Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-008",
+  "claimedAt": "2026-07-17T20:51:43.954Z",
+  "lastValidation": {
+    "ranAt": "2026-07-17T20:55:18.565Z",
+    "passed": true,
+    "results": [
+      {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "durationMs": 770,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 typecheck\n> tsc --noEmit\n\n"
+      },
+      {
+        "command": "npm run build",
+        "exitCode": 0,
+        "durationMs": 236,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 build\n> node esbuild.mjs\n\n\n  dist/extension.js      100.1kb\n  dist/extension.js.map  158.6kb\n\n⚡ Done in 12ms\n\n  dist/webview/main.js        1.1mb ⚠️\n  dist/webview/main.css      12.5kb\n  dist/webview/main.js.map    1.7mb\n  dist/webview/main.css.map  21.8kb\n\n⚡ Done in 41ms\n"
+      },
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "durationMs": 19468,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test\n> npm run test:prd && npm run test:scripts\n\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:prd\n> node tests/prdPrompt.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-prdPrompt.cjs  5.4kb\n\n⚡ Done in 1ms\nPRD prompt test passed.\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:scripts\n> node tests/scripts.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-agentFiles.cjs  26.1kb\n\n⚡ Done in 1ms\nAgent Board script tests passed.\n"
+      }
+    ]
+  },
+  "shipResult": null,
+  "lastUpdated": "2026-07-17T20:55:18.677Z"
+}

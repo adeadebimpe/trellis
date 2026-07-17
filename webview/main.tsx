@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -85,6 +85,7 @@ interface BoardState {
     specProvider?: string;
     specProviderLabel: string;
     setupComplete: boolean;
+    autoAssignAgent: AssignedAgent;
   };
 }
 
@@ -115,7 +116,20 @@ function App(): JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerText, setComposerText] = useState('');
+  const [generatingIds, setGeneratingIds] = useState<string[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const dirtyRef = useRef(false);
+  const draftRef = useRef<Task | null>(null);
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  const lastKnownUpdatedRef = useRef<string | undefined>(undefined);
   const selected = state?.tasks.find((task) => task.id === selectedId) ?? null;
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
@@ -123,7 +137,15 @@ function App(): JSX.Element {
         setState(event.data.state);
         if (selectedId) {
           const fresh = event.data.state.tasks.find((task: Task) => task.id === selectedId);
-          setDraft(fresh ? cloneTask(fresh) : null);
+          if (fresh) {
+            lastKnownUpdatedRef.current = fresh.lastUpdated;
+            // Never clobber in-progress typing; the pending autosave will persist it.
+            if (!dirtyRef.current) {
+              setDraft(cloneTask(fresh));
+            }
+          } else {
+            setDraft(null);
+          }
         }
         if (projectOpen) {
           setProjectDraft(cloneProject(event.data.state.project));
@@ -144,6 +166,12 @@ function App(): JSX.Element {
       if (event.data.type === 'select-task') {
         setSelectedId(event.data.id);
       }
+      if (event.data.type === 'spec-generating') {
+        setGeneratingIds((ids) => (ids.includes(event.data.id) ? ids : [...ids, event.data.id]));
+      }
+      if (event.data.type === 'spec-generated') {
+        setGeneratingIds((ids) => ids.filter((id) => id !== event.data.id));
+      }
       if (event.data.type === 'task-deleted') {
         setSelectedId(null);
         setDraft(null);
@@ -160,16 +188,76 @@ function App(): JSX.Element {
     return () => window.removeEventListener('message', listener);
   }, [selectedId, projectOpen]);
 
-  useEffect(() => {
-    setDraft(selected ? cloneTask(selected) : null);
-  }, [selected]);
+  const flushPendingSave = () => {
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+    }
+    if (dirtyRef.current && draftRef.current) {
+      dirtyRef.current = false;
+      vscode.postMessage({ type: 'save-task', task: draftRef.current, expectedLastUpdated: lastKnownUpdatedRef.current });
+    }
+  };
 
   useEffect(() => {
+    // Switching tasks (or closing): persist unsaved edits from the previous draft first.
+    flushPendingSave();
+    setDraft(selected ? cloneTask(selected) : null);
+    lastKnownUpdatedRef.current = selected?.lastUpdated;
     setConfirmDelete(false);
+    setDetailsOpen(false);
+    setActivityOpen(false);
+    if (selectedId) {
+      setComposerOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  const updateDraft = (next: Task) => {
+    setDraft(next);
+    dirtyRef.current = true;
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = undefined;
+      if (!draftRef.current) {
+        return;
+      }
+      dirtyRef.current = false;
+      setSaveState('saving');
+      vscode.postMessage({ type: 'save-task', task: draftRef.current, expectedLastUpdated: lastKnownUpdatedRef.current });
+    }, 600);
+  };
+
+  const saveDraftNow = (next: Task) => {
+    setDraft(next);
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+    }
+    dirtyRef.current = false;
+    setSaveState('saving');
+    vscode.postMessage({ type: 'save-task', task: next, expectedLastUpdated: lastKnownUpdatedRef.current });
+  };
+
   const sendAction = (task: Task, action: string) => {
-    vscode.postMessage({ type: 'action', id: task.id, task, action, expectedLastUpdated: task.lastUpdated });
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+    }
+    dirtyRef.current = false;
+    vscode.postMessage({ type: 'action', id: task.id, task, action, expectedLastUpdated: lastKnownUpdatedRef.current ?? task.lastUpdated });
+  };
+
+  const submitComposer = () => {
+    const brief = composerText.trim();
+    if (!brief) {
+      return;
+    }
+    vscode.postMessage({ type: 'create-task', brief });
+    setComposerText('');
+    setComposerOpen(false);
   };
 
   const moveTask = (id: string, status: TaskStatus) => {
@@ -236,10 +324,19 @@ function App(): JSX.Element {
               </>
             )}
           </div>
-          <button className="primary" onClick={() => vscode.postMessage({ type: 'create-task' })}>New task</button>
+          <button className="primary" onClick={() => setComposerOpen((open) => !open)}>New task</button>
         </div>
       </header>
 
+      {state && state.tasks.length === 0 ? (
+        <section className="emptyBoard">
+          <div>
+            <h2>No tasks yet</h2>
+            <p>Describe what you want built. Agent Board drafts the PRD, assigns an agent, and queues it on the board.</p>
+            <button className="primary" onClick={() => setComposerOpen(true)}>New task</button>
+          </div>
+        </section>
+      ) : (
       <section className="board" aria-label="Agent Board columns">
         {state?.board.columns.map((column) => {
           const tasks = state.tasks.filter((task) => task.status === column.id);
@@ -278,7 +375,7 @@ function App(): JSX.Element {
                     <span className="cardTitle">{task.title || 'Untitled task'}</span>
                     <span className="agentLine">
                       <span>{task.assignedAgent}</span>
-                      <span>{task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
+                      <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
                     </span>
                   </button>
                 ))}
@@ -287,59 +384,80 @@ function App(): JSX.Element {
           );
         })}
       </section>
+      )}
+
+      {state && composerOpen && !draft && (
+        <footer className="composerBar" aria-label="New task composer">
+          <div className="composerBox">
+            <textarea
+              autoFocus
+              rows={2}
+              placeholder="Describe a task. Enter generates the PRD; Shift+Enter adds a new line."
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  submitComposer();
+                }
+                if (event.key === 'Escape') {
+                  setComposerOpen(false);
+                }
+              }}
+            />
+            <div className="composerControls">
+              <span className="composerHint">
+                {state.settings.autoAssignAgent === 'unassigned'
+                  ? 'No agent CLI detected — task starts unassigned'
+                  : `Build and QA auto-assigned to ${state.settings.autoAssignAgent}`}
+              </span>
+              <button className="primary composerSubmit" disabled={!composerText.trim()} onClick={submitComposer}>Generate PRD</button>
+            </div>
+          </div>
+        </footer>
+      )}
 
       {draft && (
         <aside className="drawer" aria-label="Task drawer">
           <div className="drawerHeader">
             <div>
-              <p className="eyebrow">{draft.id} · {draft.status}</p>
-              <input className="titleInput" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+              <p className="eyebrow">
+                {draft.id} · {draft.status}
+                {saveState === 'saving' && ' · saving…'}
+                {saveState === 'saved' && ' · saved'}
+                {saveState === 'error' && ' · save failed'}
+              </p>
+              <input className="titleInput" placeholder="Untitled task" value={draft.title} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
             </div>
-            <button className="ghost" onClick={() => setSelectedId(null)}>Close</button>
+            <div className="drawerHeaderActions">
+              <button
+                className="danger dangerSmall"
+                title={confirmDelete ? 'Click again to permanently delete this task.' : undefined}
+                onClick={() => {
+                  // window.confirm is blocked inside VS Code webviews, so confirm in-place.
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    window.setTimeout(() => setConfirmDelete(false), 4000);
+                    return;
+                  }
+                  vscode.postMessage({ type: 'delete-task', id: draft.id });
+                }}
+              >
+                {confirmDelete ? 'Confirm?' : 'Delete'}
+              </button>
+              <button className="ghost" onClick={() => setSelectedId(null)}>Close</button>
+            </div>
           </div>
 
-          <div className="quickControls">
-            <label>
-              <span>Assigned Agent</span>
-              <select
-                value={draft.assignedAgent}
-                onChange={(event) => {
-                  const assignedAgent = event.target.value as AssignedAgent;
-                  const next = { ...draft, assignedAgent };
-                  setDraft(next);
-                  vscode.postMessage({ type: 'save-task', task: next, expectedLastUpdated: selected?.lastUpdated });
-                }}
-              >
-                <option value="unassigned">unassigned</option>
-                <option value="claude">claude</option>
-                <option value="codex">codex</option>
-              </select>
-            </label>
-            <label>
-              <span>QA Agent</span>
-              <select
-                value={draft.qaAgent}
-                onChange={(event) => {
-                  const qaAgent = event.target.value as AssignedAgent;
-                  const next = { ...draft, qaAgent };
-                  setDraft(next);
-                  vscode.postMessage({ type: 'save-task', task: next, expectedLastUpdated: selected?.lastUpdated });
-                }}
-              >
-                <option value="unassigned">unassigned</option>
-                <option value="claude">claude</option>
-                <option value="codex">codex</option>
-              </select>
-            </label>
-            <label>
+          <div className="props">
+            <label className="propRow">
               <span>Status</span>
               <select
                 value={draft.status}
                 onChange={(event) => {
                   const status = event.target.value as TaskStatus;
-                  const next = { ...draft, status };
-                  setDraft(next);
-                  vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: selected?.lastUpdated });
+                  setDraft({ ...draft, status });
+                  vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: lastKnownUpdatedRef.current });
                 }}
               >
                 <option value="backlog">backlog</option>
@@ -352,59 +470,71 @@ function App(): JSX.Element {
                 <option value="done">done</option>
               </select>
             </label>
+            <label className="propRow">
+              <span>Priority</span>
+              <select value={draft.priority} onChange={(event) => saveDraftNow({ ...draft, priority: event.target.value as Priority })}>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+            </label>
+            <label className="propRow">
+              <span>Agent</span>
+              <select value={draft.assignedAgent} onChange={(event) => saveDraftNow({ ...draft, assignedAgent: event.target.value as AssignedAgent })}>
+                <option value="unassigned">unassigned</option>
+                <option value="claude">claude</option>
+                <option value="codex">codex</option>
+              </select>
+            </label>
+            <label className="propRow">
+              <span>QA</span>
+              <select value={draft.qaAgent} onChange={(event) => saveDraftNow({ ...draft, qaAgent: event.target.value as AssignedAgent })}>
+                <option value="unassigned">unassigned</option>
+                <option value="claude">claude</option>
+                <option value="codex">codex</option>
+              </select>
+            </label>
           </div>
 
           <div className="actions">
-            <Action
-              label="Generate PRD"
-              onClick={() => sendAction(draft, 'generate-spec')}
-              primary
-              disabled={!draft.brief.trim()}
-              title={!draft.brief.trim() ? 'Write or paste the task idea in the Brief field first.' : undefined}
-            />
-            <Action
-              label="Ready for agent"
-              onClick={() => sendAction(draft, 'mark-ready')}
-              disabled={draft.status === 'ready-for-agent'}
-              title={draft.status === 'ready-for-agent' ? 'Already ready for agent.' : undefined}
-            />
-            <Action
-              label="Start build"
-              onClick={() => sendAction(draft, 'start-build')}
-              disabled={!(draft.status === 'ready-for-agent' || draft.status === 'building') || draft.assignedAgent === 'unassigned'}
-              title={draft.assignedAgent === 'unassigned'
-                ? 'Assign Claude or Codex first.'
-                : !(draft.status === 'ready-for-agent' || draft.status === 'building')
-                  ? 'Move the task to Ready for Agent first.'
-                  : undefined}
-            />
-            <Action
-              label="Ready for QA"
-              onClick={() => sendAction(draft, 'mark-ready-qa')}
-              disabled={draft.status !== 'building'}
-              title={draft.status !== 'building' ? 'Only building tasks move to Ready for QA.' : undefined}
-            />
-            <Action
-              label="Start QA"
-              onClick={() => sendAction(draft, 'start-qa')}
-              disabled={!(draft.status === 'ready-for-qa' || draft.status === 'failed-qa') || draft.qaAgent === 'unassigned'}
-              title={draft.qaAgent === 'unassigned'
-                ? 'Assign a QA agent first.'
-                : !(draft.status === 'ready-for-qa' || draft.status === 'failed-qa')
-                  ? 'Move the task to Ready for QA first.'
-                  : undefined}
-            />
-            <Action
-              label="Pass QA"
-              onClick={() => sendAction(draft, 'pass-qa')}
-              disabled={draft.status !== 'qa-running'}
-              title={draft.status !== 'qa-running' ? 'QA must be running to pass it.' : undefined}
-            />
+            {draft.status === 'backlog' && (
+              <Action
+                label={generatingIds.includes(draft.id) ? 'Drafting PRD…' : 'Generate PRD'}
+                onClick={() => sendAction(draft, 'generate-spec')}
+                primary
+                disabled={!draft.brief.trim() || generatingIds.includes(draft.id)}
+                title={!draft.brief.trim() ? 'This task has no brief. Create tasks from the New task box so the PRD has a source.' : undefined}
+              />
+            )}
+            {draft.status === 'ready-for-agent' && (
+              <Action
+                label="Start build"
+                onClick={() => sendAction(draft, 'start-build')}
+                primary
+                disabled={draft.assignedAgent === 'unassigned'}
+                title={draft.assignedAgent === 'unassigned' ? 'Assign Claude or Codex first.' : undefined}
+              />
+            )}
+            {draft.status === 'building' && (
+              <Action label="Ready for QA" onClick={() => sendAction(draft, 'mark-ready-qa')} primary />
+            )}
+            {(draft.status === 'ready-for-qa' || draft.status === 'failed-qa') && (
+              <Action
+                label="Start QA"
+                onClick={() => sendAction(draft, 'start-qa')}
+                primary
+                disabled={draft.qaAgent === 'unassigned'}
+                title={draft.qaAgent === 'unassigned' ? 'Assign a QA agent first.' : undefined}
+              />
+            )}
+            {draft.status === 'qa-running' && (
+              <Action label="Pass QA" onClick={() => sendAction(draft, 'pass-qa')} primary />
+            )}
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
             )}
             {draft.status === 'human-review' && (
-              <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: selected?.lastUpdated })} primary />
+              <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
             )}
             {draft.status === 'human-review' && (
               <Action label="Mark done" onClick={() => sendAction(draft, 'mark-done')} />
@@ -433,89 +563,38 @@ function App(): JSX.Element {
             </div>
           )}
 
-          <div className="formGrid">
-            <Field
-              label="Brief"
-              placeholder="Write or paste the rough idea and any context. Generate PRD turns this into the structured spec below."
-              value={draft.brief}
-              onChange={(value) => setDraft({ ...draft, brief: value })}
-            />
-            <Field label="Generated PRD Description" value={draft.description} onChange={(value) => setDraft({ ...draft, description: value })} />
-            <ListField label="Acceptance Criteria" value={draft.acceptanceCriteria} onChange={(value) => setDraft({ ...draft, acceptanceCriteria: splitLines(value) })} />
-            <ListField label="QA Checklist" value={draft.qaChecklist} onChange={(value) => setDraft({ ...draft, qaChecklist: splitLines(value) })} />
-            <ListField label="Design QA Checklist" value={draft.designQaChecklist} onChange={(value) => setDraft({ ...draft, designQaChecklist: splitLines(value) })} />
-            <ListField label="Validation Commands" value={draft.validationCommands} onChange={(value) => setDraft({ ...draft, validationCommands: splitLines(value) })} />
-            <ListField label="Relevant Files" value={draft.relevantFiles} onChange={(value) => setDraft({ ...draft, relevantFiles: splitLines(value) })} />
-            <ListField label="Constraints" value={draft.constraints} onChange={(value) => setDraft({ ...draft, constraints: splitLines(value) })} />
-            <Field label="Agent Notes" value={draft.agentNotes} onChange={(value) => setDraft({ ...draft, agentNotes: value })} />
-            <ListField label="QA Evidence" value={draft.qaEvidence} onChange={(value) => setDraft({ ...draft, qaEvidence: splitLines(value) })} />
-            <label>
-              <span>Priority</span>
-              <select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as Priority })}>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
-              </select>
-            </label>
-            <label>
-              <span>Branch Name</span>
-              <input className="textInput" value={draft.branchName} onChange={(event) => setDraft({ ...draft, branchName: event.target.value })} />
-            </label>
+          {generatingIds.includes(draft.id) && (
+            <p className="draftingNote">Drafting title, PRD, and checklists from the brief…</p>
+          )}
+
+          <div className="fields">
+            <Field label="PRD Description" value={draft.description} onChange={(value) => updateDraft({ ...draft, description: value })} />
+            <ListField label="Acceptance Criteria" value={draft.acceptanceCriteria} onChange={(value) => updateDraft({ ...draft, acceptanceCriteria: splitLines(value) })} />
           </div>
 
-          <div className="drawerFooter">
-            <button
-              className="primary"
-              disabled={saveState === 'saving'}
-              onClick={() => {
-                setSaveState('saving');
-                vscode.postMessage({ type: 'save-task', task: draft, expectedLastUpdated: selected?.lastUpdated });
-              }}
-            >
-              {saveState === 'saving' ? 'Saving...' : 'Save Task'}
-            </button>
-            <button
-              className="danger"
-              title={confirmDelete ? 'Click again to permanently delete this task.' : undefined}
-              onClick={() => {
-                // window.confirm is blocked inside VS Code webviews, so confirm in-place.
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  window.setTimeout(() => setConfirmDelete(false), 4000);
-                  return;
-                }
-                vscode.postMessage({ type: 'delete-task', id: draft.id });
-              }}
-            >
-              {confirmDelete ? 'Confirm delete?' : 'Delete Task'}
-            </button>
-            <p>
-              {saveState === 'saved' && 'Saved. '}
-              {saveState === 'error' && 'Save failed. '}
-              Last updated {new Date(draft.lastUpdated).toLocaleString()}
-            </p>
-          </div>
+          <button className="sectionToggle" onClick={() => setDetailsOpen((open) => !open)}>
+            {detailsOpen ? '▾' : '▸'} Details
+          </button>
+          {detailsOpen && (hasTaskDetails(draft) ? (
+            <div className="detailSections">
+              <DetailList label="QA Checklist" items={draft.qaChecklist} />
+              <DetailList label="Design QA Checklist" items={draft.designQaChecklist} />
+              <DetailList label="Validation Commands" items={draft.validationCommands} />
+              <DetailList label="Relevant Files" items={draft.relevantFiles} />
+              <DetailList label="Constraints" items={draft.constraints} />
+              <DetailText label="Agent Notes" text={draft.agentNotes} />
+              <DetailList label="QA Evidence" items={draft.qaEvidence} />
+              <DetailText label="Branch" text={draft.branchName} />
+            </div>
+          ) : (
+            <p className="detailEmpty">Checklists, files, and notes filled in by agents will appear here.</p>
+          ))}
 
-          <section className="activity">
-            <h3>Activity Log</h3>
-            {(draft.activityLog ?? []).slice().reverse().map((entry, index) => (
-              <article key={`${entry.timestamp}-${index}`}>
-                <time>{new Date(entry.timestamp).toLocaleString()}</time>
-                <strong>{entry.actor}</strong>
-                <p>{entry.message}</p>
-              </article>
-            ))}
-          </section>
-          <section className="activity">
-            <h3>QA Notes</h3>
-            {(draft.qaNotes ?? []).slice().reverse().map((entry, index) => (
-              <article key={`${entry.timestamp}-qa-${index}`}>
-                <time>{new Date(entry.timestamp).toLocaleString()}</time>
-                <strong>{entry.actor}</strong>
-                <p>{entry.message}</p>
-              </article>
-            ))}
-          </section>
+          <Timeline
+            open={activityOpen}
+            onToggle={() => setActivityOpen((open) => !open)}
+            entries={[...(draft.activityLog ?? []), ...(draft.qaNotes ?? [])]}
+          />
         </aside>
       )}
 
@@ -617,6 +696,74 @@ function ListField({ label, value, onChange }: { label: string; value: string[];
 
 function InfoLine({ label, value }: { label: string; value: string }): JSX.Element {
   return <p><strong>{label}</strong><span>{value}</span></p>;
+}
+
+function hasTaskDetails(task: Task): boolean {
+  return Boolean(
+    task.qaChecklist?.length ||
+    task.designQaChecklist?.length ||
+    task.validationCommands?.length ||
+    task.relevantFiles?.length ||
+    task.constraints?.length ||
+    task.agentNotes?.trim() ||
+    task.qaEvidence?.length ||
+    task.branchName?.trim()
+  );
+}
+
+function DetailList({ label, items }: { label: string; items: string[] }): JSX.Element | null {
+  if (!items?.length) {
+    return null;
+  }
+  return (
+    <div className="detailBlock">
+      <h4>{label}</h4>
+      <ul>
+        {items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+function DetailText({ label, text }: { label: string; text: string }): JSX.Element | null {
+  if (!text?.trim()) {
+    return null;
+  }
+  return (
+    <div className="detailBlock">
+      <h4>{label}</h4>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function formatTimelineTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function Timeline({ entries, open, onToggle }: { entries: ActivityEntry[]; open: boolean; onToggle: () => void }): JSX.Element | null {
+  if (!entries.length) {
+    return null;
+  }
+  const sorted = entries.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return (
+    <section className="timeline">
+      <button className="sectionToggle" onClick={onToggle}>
+        {open ? '▾' : '▸'} Activity <span className="sectionCount">{sorted.length}</span>
+      </button>
+      {open && sorted.map((entry, index) => (
+        <div className="timelineRow" key={`${entry.timestamp}-${index}`}>
+          <time>{formatTimelineTime(entry.timestamp)}</time>
+          <span className="timelineActor">{entry.actor}</span>
+          <span className="timelineMessage">{entry.message}</span>
+        </div>
+      ))}
+    </section>
+  );
 }
 
 function splitLines(value: string): string[] {

@@ -1,6 +1,7 @@
 import { AgentBoardTask, ProjectContext } from './types';
 
 export interface AgentSpecPatch {
+  title?: string;
   description: string;
   acceptanceCriteria: string[];
   qaChecklist: string[];
@@ -29,8 +30,11 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '- Keep the PRD specific to the requested product behavior, user outcome, edge cases, and validation.',
     '- Explore the repository you are running in and list the existing files and paths most relevant to implementing this brief in relevantFiles, so the implementing agent starts in the right place.',
     '',
+    '- Set title to a short, specific task name (max 72 characters, no trailing punctuation) that summarizes the userBrief.',
+    '',
     'Return this exact JSON shape:',
     '{',
+    '  "title": "string",',
     '  "description": "string",',
     '  "acceptanceCriteria": ["string"],',
     '  "qaChecklist": ["string"],',
@@ -72,7 +76,7 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
 }
 
 export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBoardTask, project: ProjectContext): AgentSpecPatch {
-  return {
+  const patch: AgentSpecPatch = {
     description: asString(value.description) || task.description,
     acceptanceCriteria: asStringArray(value.acceptanceCriteria, task.acceptanceCriteria),
     qaChecklist: asStringArray(value.qaChecklist, task.qaChecklist),
@@ -81,6 +85,11 @@ export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBo
     relevantFiles: asStringArray(value.relevantFiles, task.relevantFiles),
     constraints: asStringArray(value.constraints, task.constraints)
   };
+  const title = asString(value.title).replace(/[.!?]+$/g, '').trim();
+  if (title) {
+    patch.title = title.length > 72 ? `${title.slice(0, 69).trimEnd()}...` : title;
+  }
+  return patch;
 }
 
 export function deriveTaskTitle(task: Pick<AgentBoardTask, 'title' | 'brief' | 'description' | 'id'>): string {

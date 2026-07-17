@@ -1,0 +1,135 @@
+{
+  "id": "TASK-006",
+  "title": "Start QA automatically when builds complete",
+  "status": "done",
+  "priority": "high",
+  "assignedAgent": "codex",
+  "qaAgent": "codex",
+  "brief": "Ready for QA should not be a manual waiting board. When a validated build completes, automatically start the configured QA agent and show QA as running. Keep failed QA as an explicit retry state to avoid loops.",
+  "description": "Remove the routine manual QA handoff. The ready-for-qa state remains available as a short-lived durable transition in task data, but the extension observes it and automatically claims and launches QA. The UI should communicate automatic QA rather than presenting a normal Start QA gate.",
+  "acceptanceCriteria": [
+    "A task entering ready-for-qa with a configured QA agent automatically transitions to qa-running and launches that agent.",
+    "Automatic QA startup is guarded against duplicate watcher events and duplicate terminals.",
+    "A failed-qa task does not automatically retry in a loop and retains a manual retry action.",
+    "The task UI no longer presents Ready for QA as a routine manual destination.",
+    "If automatic QA cannot start, the task remains recoverable and the user receives a useful error."
+  ],
+  "qaChecklist": [
+    "Complete a validated build and verify QA starts without clicking Start QA.",
+    "Trigger repeated file watcher refreshes and verify only one QA terminal starts.",
+    "Verify failed QA offers an explicit retry and does not auto-loop.",
+    "Verify missing/unavailable QA agent produces a useful notification without corrupting task state."
+  ],
+  "designQaChecklist": [
+    "QA Running reads as active system work rather than another manual queue.",
+    "Failed QA clearly communicates that human-triggered retry is intentional."
+  ],
+  "validationCommands": [
+    "npm run typecheck",
+    "npm run build",
+    "npm test"
+  ],
+  "relevantFiles": [
+    "src/extension.ts",
+    "webview/main.tsx"
+  ],
+  "constraints": [
+    "Keep ready-for-qa as a durable internal state for script compatibility.",
+    "Do not auto-retry failed QA.",
+    "Do not include unrelated uncommitted changes from the main checkout."
+  ],
+  "agentNotes": "Created from the user's request to remove the manual Ready for QA queue. TASK-005 was separately revalidated and passed to human-review before starting this work. Implemented startup and file-watcher scans for ready-for-qa tasks. A per-task in-flight set and last-attempted task version prevent duplicate launches and notification loops. Only ready-for-qa auto-starts; failed-qa retains an explicit Retry QA action. The UI replaces routine Ready/Start QA actions with automatic handoff messaging.",
+  "qaNotes": [
+    {
+      "timestamp": "2026-07-17T20:46:05.013Z",
+      "actor": "codex",
+      "message": "Verified automatic ready-for-qa scanning, duplicate guards, startup recovery, non-looping failed QA, and updated handoff/retry UI. All validation commands pass."
+    }
+  ],
+  "qaEvidence": [
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm test",
+    "PASS: npm run typecheck",
+    "PASS: npm run build",
+    "PASS: npm test"
+  ],
+  "activityLog": [
+    {
+      "timestamp": "2026-07-17T20:40:00.000Z",
+      "actor": "codex",
+      "message": "Created task for automatic QA startup; recorded ready-for-qa as an internal compatibility transition."
+    },
+    {
+      "timestamp": "2026-07-17T20:40:17.562Z",
+      "actor": "codex",
+      "message": "Created worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-006 on new branch agent-board/TASK-006-start-qa-automatically-when-builds-complete."
+    },
+    {
+      "timestamp": "2026-07-17T20:43:00.000Z",
+      "actor": "codex",
+      "message": "Implemented guarded automatic QA launch on extension startup and board changes, plus automatic-handoff and explicit-retry UI states. Local typecheck, build, and tests passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:45:37.932Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:45:38.035Z",
+      "actor": "codex",
+      "message": "Moved task to ready-for-qa."
+    },
+    {
+      "timestamp": "2026-07-17T20:45:44.443Z",
+      "actor": "codex",
+      "message": "Started QA. Reusing existing worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-006 on branch agent-board/TASK-006-start-qa-automatically-when-builds-complete."
+    },
+    {
+      "timestamp": "2026-07-17T20:46:04.914Z",
+      "actor": "codex",
+      "message": "Ran validation: 3 command(s), all passed."
+    },
+    {
+      "timestamp": "2026-07-17T20:46:05.013Z",
+      "actor": "codex",
+      "message": "QA passed. Moved task to human-review."
+    },
+    {
+      "timestamp": "2026-07-17T20:56:14.770Z",
+      "actor": "vscode",
+      "message": "Marked done."
+    }
+  ],
+  "claimedBy": "codex",
+  "qaClaimedBy": "codex",
+  "branchName": "agent-board/TASK-006-start-qa-automatically-when-builds-complete",
+  "worktreePath": "/Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-006",
+  "claimedAt": "2026-07-17T20:40:17.562Z",
+  "lastValidation": {
+    "ranAt": "2026-07-17T20:46:04.914Z",
+    "passed": true,
+    "results": [
+      {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "durationMs": 791,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 typecheck\n> tsc --noEmit\n\n"
+      },
+      {
+        "command": "npm run build",
+        "exitCode": 0,
+        "durationMs": 255,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 build\n> node esbuild.mjs\n\n\n  dist/extension.js       96.0kb\n  dist/extension.js.map  152.3kb\n\n⚡ Done in 16ms\n\n  dist/webview/main.js        1.1mb ⚠️\n  dist/webview/main.css      11.9kb\n  dist/webview/main.js.map    1.6mb\n  dist/webview/main.css.map  20.8kb\n\n⚡ Done in 47ms\n"
+      },
+      {
+        "command": "npm test",
+        "exitCode": 0,
+        "durationMs": 19248,
+        "outputTail": "npm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test\n> npm run test:prd && npm run test:scripts\n\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:prd\n> node tests/prdPrompt.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-prdPrompt.cjs  5.4kb\n\n⚡ Done in 2ms\nPRD prompt test passed.\nnpm warn cli npm v11.6.0 does not support Node.js v22.1.0. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.\n\n> agent-board@0.0.7 test:scripts\n> node tests/scripts.test.mjs\n\n\n  ../../../../../../../../private/tmp/agent-board-agentFiles.cjs  26.1kb\n\n⚡ Done in 1ms\nAgent Board script tests passed.\n"
+      }
+    ]
+  },
+  "shipResult": null,
+  "lastUpdated": "2026-07-17T20:56:14.770Z"
+}

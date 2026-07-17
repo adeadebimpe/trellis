@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "contextNotes": "",
   "overview": "Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.",
   "goals": [],
   "architectureNotes": "",
@@ -47,7 +48,7 @@
       "npm run test",
       "npm run typecheck"
     ],
-    "lastInferred": "2026-07-16T17:31:52.608Z"
+    "lastInferred": "2026-07-17T19:52:05.781Z"
   },
-  "lastUpdated": "2026-07-16T17:31:52.608Z"
+  "lastUpdated": "2026-07-17T19:52:05.781Z"
 }

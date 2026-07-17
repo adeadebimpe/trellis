@@ -1,0 +1,98 @@
+{
+  "id": "TASK-009",
+  "title": "Theme Agent Board webview with VS Code theme variables",
+  "status": "building",
+  "priority": "medium",
+  "assignedAgent": "codex",
+  "qaAgent": "unassigned",
+  "brief": "Board should follow the theme of vs code",
+  "description": "The Agent Board webview currently hardcodes a dark Linear-style palette in webview/styles.css (:root defines --bg: #08090a, --panel, --text, --accent, etc., plus an Inter font stack). This makes the board ignore the user's active VS Code color theme: it stays dark on light themes, clashes with custom themes, and ignores high-contrast modes. The task is to restyle the board so it follows the active VS Code theme by mapping the existing CSS custom properties onto the --vscode-* CSS variables that VS Code injects into every webview (e.g. --vscode-editor-background, --vscode-sideBar-background, --vscode-editorWidget-background, --vscode-foreground, --vscode-descriptionForeground, --vscode-panel-border / --vscode-widget-border, --vscode-focusBorder, --vscode-button-background / --vscode-button-foreground / --vscode-button-hoverBackground, --vscode-input-background / --vscode-input-border, --vscode-list-hoverBackground, --vscode-badge-background, and status colors like --vscode-charts-green / --vscode-charts-orange / --vscode-errorForeground or the testing/notification colors). Typography should use var(--vscode-font-family), var(--vscode-font-size), and var(--vscode-editor-font-family) for monospace areas instead of the hardcoded Inter stack. The recommended approach is to keep the existing internal token names (--bg, --panel, --text, --muted, --accent, ...) and redefine each one in :root as var(--vscode-..., <current value>) with the current hex as fallback, so the ~110 existing var() usages across styles.css keep working and the diff stays small. Any remaining hardcoded hex/rgba values in styles.css (and any inline colors in webview/main.tsx) should be converted to those tokens or to color-mix()/opacity derived from theme variables. The board must remain legible in dark, light, and high-contrast themes and update live when the user switches themes (webviews get new variable values automatically; no reload logic should be required). Semantic status colors (green = done/success, amber = in progress/warning, red = blocked/error, accent = selection/primary actions) must stay distinguishable in both light and dark themes. No behavior, layout, or extension-host (src/) changes are expected beyond styling; the CSP in src/extension.ts already permits the bundled stylesheet.",
+  "acceptanceCriteria": [
+    "webview/styles.css no longer hardcodes the page palette: every :root token resolves from a --vscode-* variable, with the previous hex value only as a fallback for non-webview contexts",
+    "Body/background, panels, cards, borders, and text colors visibly change to match the active VS Code theme when switching between a dark theme (e.g. Dark+) and a light theme (e.g. Light+)",
+    "Typography uses var(--vscode-font-family) and var(--vscode-font-size) for UI text instead of the hardcoded Inter stack; monospace areas (if any) use var(--vscode-editor-font-family)",
+    "Buttons, inputs, textareas, and selects use VS Code button/input theme variables (background, foreground, border, hover) and remain readable in light themes",
+    "Focus states use var(--vscode-focusBorder); hover states on list/board items use list hover variables rather than fixed white-alpha overlays",
+    "Status/priority colors (done, in-progress, blocked, priority badges) derive from theme variables or theme-safe values and remain distinguishable on both light and dark backgrounds",
+    "No hardcoded hex or rgba colors remain in webview/main.tsx inline styles (if any exist) — they are moved to CSS tokens",
+    "Theme switching while the board is open updates the UI live without reloading the webview or any code changes in src/extension.ts",
+    "High-contrast themes produce visible borders and readable text (no invisible controls due to transparent backgrounds)",
+    "Board layout, spacing, and behavior are unchanged — this is a color/typography retheme only"
+  ],
+  "qaChecklist": [
+    "Run npm run typecheck and npm run build; both pass with no new errors",
+    "Run npm run test (and npm run test:prd) to confirm no regressions in existing suites",
+    "Launch the extension (F5 / Extension Development Host), open the Agent Board panel, and verify it renders with the current theme's colors",
+    "Switch VS Code to Light+ (Preferences: Color Theme) with the board open — background turns light, all text remains readable, no white-on-white or dark-on-dark elements",
+    "Switch to Dark+ — board looks equivalent to (or better than) the previous dark design",
+    "Switch to a High Contrast theme — buttons, inputs, and card borders are visible and text meets contrast",
+    "Exercise key surfaces in each theme: setup screen, board columns, task cards, task detail view, buttons/menus, inputs and textareas, empty states",
+    "Verify status colors (done/in-progress/blocked, priority badges) are distinguishable in both light and dark themes",
+    "grep webview/styles.css for remaining raw hex values outside of var(--vscode-..., fallback) fallbacks and confirm each remaining one is intentional",
+    "Confirm the sidebar webview view and the panel webview (both created in src/extension.ts) render themed correctly"
+  ],
+  "designQaChecklist": [
+    "Board looks native to VS Code — surfaces align with editor/sideBar/editorWidget backgrounds rather than a custom black palette",
+    "Visual hierarchy preserved: panels vs cards vs page background remain distinguishable in light, dark, and high-contrast themes",
+    "Text contrast: primary text, muted text, and subtle text all remain legible in Light+ (muted text must not be too faint on white)",
+    "Accent/selection color follows the theme (focusBorder/button background) rather than the fixed indigo #5e6ad2, or degrades gracefully to it",
+    "Hover and focus states are perceivable in all themes; focus rings use --vscode-focusBorder",
+    "Font matches the VS Code UI font; sizes and spacing unchanged from the current design",
+    "Badges, chips, and status dots keep sufficient contrast against their backgrounds in both light and dark themes",
+    "No harsh pure-white or pure-black artifacts introduced when switching themes; shadows/overlays adapt (avoid fixed white-alpha lines on light backgrounds)"
+  ],
+  "validationCommands": [
+    "npm run typecheck",
+    "npm run build",
+    "npm run test"
+  ],
+  "relevantFiles": [
+    "webview/styles.css"
+  ],
+  "constraints": [
+    "Keep the existing internal CSS custom-property names (--bg, --panel, --text, --accent, ...) and remap them to --vscode-* variables with fallbacks; avoid a wholesale rewrite of the ~990-line stylesheet",
+    "Styling-only change: do not alter board behavior, message passing, storage, or the webview HTML/CSP in src/extension.ts unless strictly required",
+    "Do not add new dependencies or a theming library; use plain CSS variables provided by the VS Code webview environment",
+    "Do not implement custom theme detection/toggle logic in JS — rely on VS Code's injected CSS variables and body theme classes (vscode-light / vscode-dark / vscode-high-contrast) if per-theme overrides are needed",
+    "Preserve current layout, spacing, radii, and typography scale; only colors and font-family sources change",
+    "Follow existing project patterns before introducing new abstractions, and keep changes scoped to this task"
+  ],
+  "agentNotes": "Remapped the existing CSS token system to VS Code webview variables, retaining the former palette only as non-webview fallbacks. Added theme tokens for primary/secondary buttons, inputs, links, semantic status colors, shadows, typography, and high-contrast borders. Removed fixed button/danger/shadow colors and the fixed-color select SVG; native select rendering now follows the host theme. Added focus-visible outlines using focusBorder. No layout, React, extension-host, dependency, or behavior changes were needed. Static color audit found raw colors only inside documented :root fallbacks.",
+  "qaNotes": [],
+  "qaEvidence": [],
+  "activityLog": [
+    {
+      "timestamp": "2026-07-17T20:51:51.970Z",
+      "actor": "vscode",
+      "message": "Created blank task."
+    },
+    {
+      "timestamp": "2026-07-17T20:55:16.965Z",
+      "actor": "claude-code",
+      "message": "Generated PRD."
+    },
+    {
+      "timestamp": "2026-07-17T20:56:28.719Z",
+      "actor": "vscode",
+      "message": "Updated task."
+    },
+    {
+      "timestamp": "2026-07-17T20:57:37.744Z",
+      "actor": "codex",
+      "message": "Created worktree at /Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-009 on new branch agent-board/TASK-009-theme-agent-board-webview-with-vs-code-theme-var."
+    },
+    {
+      "timestamp": "2026-07-17T21:00:00.000Z",
+      "actor": "codex",
+      "message": "Completed VS Code theme-variable retheme and static raw-color audit. Local typecheck, build, and tests passed."
+    }
+  ],
+  "claimedBy": "codex",
+  "qaClaimedBy": "",
+  "branchName": "agent-board/TASK-009-theme-agent-board-webview-with-vs-code-theme-var",
+  "worktreePath": "/Users/bimpe/Documents/Experiments/agent board/.agent-board/worktrees/TASK-009",
+  "claimedAt": "2026-07-17T20:57:37.744Z",
+  "lastValidation": null,
+  "shipResult": null,
+  "lastUpdated": "2026-07-17T20:57:37.744Z"
+}

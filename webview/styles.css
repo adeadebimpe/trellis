@@ -2,8 +2,8 @@
   --bg: #08090a;
   --panel: #0f1011;
   --panel-2: #161719;
-  --line: #1f2023;
-  --line-strong: #2a2b2f;
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.11);
   --text: #e6e6e7;
   --muted: #8a8f98;
   --subtle: #62666d;
@@ -185,6 +185,77 @@ h1 {
   background: var(--panel-2);
 }
 
+.composerBar {
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  bottom: 0;
+  padding: 10px 20px 12px;
+  position: sticky;
+  z-index: 10;
+}
+
+.composerBox {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 8px 10px 8px;
+  transition: border-color 0.12s ease;
+}
+
+.composerBox:focus-within {
+  border-color: var(--accent);
+}
+
+.composerBox textarea {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 13px;
+  min-height: 40px;
+  padding: 2px 2px 6px;
+  resize: none;
+  width: 100%;
+}
+
+.composerBox textarea:focus {
+  border-color: transparent;
+  outline: none;
+}
+
+.composerControls {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.composerHint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.composerSubmit {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.draftingNote {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 10px 0 0;
+  animation: draftingPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes draftingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 .primary,
 .ghost,
 .action,
@@ -196,7 +267,24 @@ h1 {
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+}
+
+.primary:active:not(:disabled),
+.ghost:active:not(:disabled),
+.action:active:not(:disabled),
+.danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.primary:focus-visible,
+.ghost:focus-visible,
+.action:focus-visible,
+.danger:focus-visible,
+.sectionToggle:focus-visible,
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .primary {
@@ -289,8 +377,35 @@ h1 {
   border-radius: var(--radius-sm);
   color: var(--subtle);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   padding: 0;
+}
+
+.emptyBoard {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.emptyBoard div {
+  max-width: 420px;
+  text-align: center;
+}
+
+.emptyBoard h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.emptyBoard p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
 }
 
 .cards {
@@ -349,6 +464,7 @@ h1 {
   color: var(--muted);
   display: flex;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   justify-content: space-between;
   text-transform: none;
@@ -403,12 +519,23 @@ h1 {
   z-index: 5;
 }
 
-.drawerHeader,
-.drawerFooter {
-  align-items: center;
+.drawerHeader {
+  align-items: flex-start;
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+.drawerHeaderActions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.dangerSmall {
+  font-weight: 500;
+  padding: 5px 10px;
 }
 
 .drawerHeader > div:first-child {
@@ -451,15 +578,43 @@ h1 {
   margin: 14px 0 18px;
 }
 
-.quickControls {
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+.props {
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
   margin-top: 16px;
-  padding: 12px;
+  padding: 10px 0;
+}
+
+.propRow {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 110px 1fr;
+}
+
+.propRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.propRow select {
+  background-color: transparent;
+  border-color: transparent;
+  font-size: 12px;
+  justify-self: start;
+  min-height: 26px;
+  min-width: 160px;
+  padding: 2px 24px 2px 6px;
+}
+
+.propRow:hover select {
+  border-color: var(--line);
+}
+
+.propRow select:focus {
+  border-color: var(--accent);
 }
 
 .action {
@@ -544,6 +699,7 @@ select {
   border-radius: var(--radius);
   color: var(--text);
   font-size: 13px;
+  line-height: 1.6;
   min-height: 76px;
   padding: 8px 10px;
   resize: vertical;
@@ -572,13 +728,72 @@ input.textInput {
   padding: 6px 10px;
 }
 
-.drawerFooter {
-  border-top: 1px solid var(--line);
-  border-bottom: 0;
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+.fields label {
+  gap: 6px;
+}
+
+/* Inline-editor pattern: negative margins cancel the padding so the text
+   glyphs sit flush with the label, while hover/focus still get a full box. */
+.fields textarea {
+  background: transparent;
+  border-color: transparent;
+  margin: 0 -10px;
+  min-height: 88px;
+  padding: 6px 10px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.fields textarea:hover {
+  border-color: var(--line);
+}
+
+.fields textarea:focus {
+  background: var(--panel);
+  border-color: var(--accent);
+}
+
+.detailSections {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.detailBlock h4 {
   color: var(--muted);
   font-size: 11px;
-  margin: 18px 0 14px;
-  padding: 14px 0 0;
+  font-weight: 500;
+  margin: 0 0 5px;
+}
+
+.detailBlock ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.detailBlock li,
+.detailBlock p {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.detailBlock p {
+  white-space: pre-wrap;
+}
+
+.detailEmpty {
+  color: var(--subtle);
+  font-size: 12px;
+  margin: 0 0 18px;
 }
 
 .contextActions {
@@ -685,47 +900,64 @@ textarea::placeholder {
   line-height: 1.45;
 }
 
-.drawerFooter p {
+.timeline {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+.timeline .sectionToggle {
   margin: 0;
 }
 
-.activity h3 {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0 0 10px;
-  letter-spacing: 0;
-}
-
-.activity article {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 0;
-}
-
-.activity article:last-child {
-  border-bottom: 0;
-}
-
-.activity time {
+.sectionCount {
   color: var(--subtle);
-  display: block;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.timelineRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 108px 56px 1fr;
+  padding: 4px 0;
+}
+
+.timelineRow time {
+  color: var(--subtle);
   font-size: 11px;
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
-.activity strong {
+.timelineActor {
   color: var(--muted);
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  margin: 3px 0;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-.activity p {
+.timelineMessage {
   color: var(--text);
   font-size: 12px;
-  margin: 0;
   line-height: 1.5;
+}
+
+.board::-webkit-scrollbar,
+.drawer::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.board::-webkit-scrollbar-thumb,
+.drawer::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+
+.board::-webkit-scrollbar-track,
+.drawer::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .expandButton {
@@ -743,9 +975,17 @@ textarea::placeholder {
 
   .formGrid,
   .actions,
-  .quickControls,
   .contextActions,
   .inferencePanel p {
     grid-template-columns: 1fr;
+  }
+
+  .timelineRow {
+    gap: 2px 8px;
+    grid-template-columns: max-content 1fr;
+  }
+
+  .timelineRow .timelineMessage {
+    grid-column: 1 / -1;
   }
 }

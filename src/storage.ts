@@ -96,7 +96,7 @@ export class AgentBoardStorage {
     return { board, tasks, project };
   }
 
-  async createTask(): Promise<AgentBoardTask> {
+  async createTask(initial?: Partial<AgentBoardTask>): Promise<AgentBoardTask> {
     await this.prepareAgentFiles();
     return this.withTaskLock('_board', 'vscode', async () => {
       const tasks = await this.loadTasks();
@@ -106,6 +106,18 @@ export class AgentBoardStorage {
         .reduce((max, value) => Math.max(max, value), 0) + 1;
       const id = `TASK-${String(nextNumber).padStart(3, '0')}`;
       const task = this.blankTask(id);
+      const brief = String(initial?.brief ?? '').trim();
+      if (brief) {
+        task.brief = brief;
+        const derived = deriveTaskTitle(task);
+        task.title = derived === task.id ? '' : derived;
+      }
+      if (initial?.assignedAgent) {
+        task.assignedAgent = this.normalizeAgent(initial.assignedAgent);
+      }
+      if (initial?.qaAgent) {
+        task.qaAgent = this.normalizeAgent(initial.qaAgent);
+      }
       await this.writeJson(vscode.Uri.joinPath(this.boardDir, 'tasks', `${id}.json`), task);
       await this.appendRootActivity('vscode', `Created ${id}.`);
       return task;
