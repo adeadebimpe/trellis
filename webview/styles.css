@@ -451,6 +451,15 @@ h1 {
   margin: 14px 0 18px;
 }
 
+.automationHint {
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0;
+  padding: 6px 10px;
+}
+
 .quickControls {
   background: transparent;
   border: 1px solid var(--line);

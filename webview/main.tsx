@@ -378,22 +378,20 @@ function App(): JSX.Element {
                   ? 'Move the task to Ready for Agent first.'
                   : undefined}
             />
-            <Action
-              label="Ready for QA"
-              onClick={() => sendAction(draft, 'mark-ready-qa')}
-              disabled={draft.status !== 'building'}
-              title={draft.status !== 'building' ? 'Only building tasks move to Ready for QA.' : undefined}
-            />
-            <Action
-              label="Start QA"
-              onClick={() => sendAction(draft, 'start-qa')}
-              disabled={!(draft.status === 'ready-for-qa' || draft.status === 'failed-qa') || draft.qaAgent === 'unassigned'}
-              title={draft.qaAgent === 'unassigned'
-                ? 'Assign a QA agent first.'
-                : !(draft.status === 'ready-for-qa' || draft.status === 'failed-qa')
-                  ? 'Move the task to Ready for QA first.'
-                  : undefined}
-            />
+            {draft.status === 'building' && (
+              <p className="automationHint">QA starts automatically after the build agent validates and completes this task.</p>
+            )}
+            {draft.status === 'ready-for-qa' && (
+              <Action label="QA is starting automatically…" onClick={() => undefined} disabled />
+            )}
+            {draft.status === 'failed-qa' && (
+              <Action
+                label="Retry QA"
+                onClick={() => sendAction(draft, 'start-qa')}
+                disabled={draft.qaAgent === 'unassigned'}
+                title={draft.qaAgent === 'unassigned' ? 'Assign a QA agent first.' : 'Failed QA only retries when you choose to run it again.'}
+              />
+            )}
             <Action
               label="Pass QA"
               onClick={() => sendAction(draft, 'pass-qa')}

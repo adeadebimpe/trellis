@@ -19,6 +19,8 @@ const execFileAsync = promisify(execFile);
 type AgentKind = 'build' | 'qa';
 const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
 const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
+const autoQaStarting = new Set<string>();
+const autoQaAttemptedVersions = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext): void {
   activeContext = context;
@@ -92,6 +94,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  // Resume the automatic handoff for tasks that became QA-ready while the
+  // extension host was stopped. Existing QA terminals are reclaimed above.
+  void refreshBoard();
 }
 
 async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promise<void> {
@@ -518,8 +524,37 @@ function scheduleRefresh(): void {
     clearTimeout(refreshTimer);
   }
   refreshTimer = setTimeout(() => {
-    void postState();
+    void refreshBoard();
   }, 150);
+}
+
+async function refreshBoard(): Promise<void> {
+  await startReadyQaTasks();
+  await postState();
+}
+
+async function startReadyQaTasks(): Promise<void> {
+  const storage = await resolveStorage();
+  const { tasks } = await storage.loadBoardState();
+  const ready = tasks.filter((task) =>
+    task.status === 'ready-for-qa'
+    && !agentTerminals.has(task.id)
+    && !autoQaStarting.has(task.id)
+    && autoQaAttemptedVersions.get(task.id) !== task.lastUpdated
+  );
+
+  await Promise.all(ready.map(async (task) => {
+    autoQaStarting.add(task.id);
+    autoQaAttemptedVersions.set(task.id, task.lastUpdated);
+    try {
+      await runStartQaAction(task.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Automatic QA could not start for ${task.id}. ${message}`);
+    } finally {
+      autoQaStarting.delete(task.id);
+    }
+  }));
 }
 
 async function postState(): Promise<void> {
