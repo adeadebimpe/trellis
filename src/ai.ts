@@ -24,7 +24,7 @@ interface AiSettings {
 export async function configureAi(context: vscode.ExtensionContext): Promise<void> {
   const provider = await vscode.window.showQuickPick(
     [{ label: 'OpenAI', value: 'openai' as const, description: 'Use an OpenAI API key with the Responses API' }],
-    { title: 'Agent Board AI Provider' }
+    { title: 'Trellis AI Provider' }
   );
   if (!provider) {
     return;
@@ -42,7 +42,7 @@ export async function configureAi(context: vscode.ExtensionContext): Promise<voi
 
   const model = await vscode.window.showInputBox({
     title: 'OpenAI Model',
-    prompt: 'Choose the model Agent Board should use for task specs.',
+    prompt: 'Choose the model Trellis should use for task specs.',
     value: context.globalState.get<string>(AI_MODEL_KEY, DEFAULT_OPENAI_MODEL),
     ignoreFocusOut: true
   });
@@ -53,7 +53,7 @@ export async function configureAi(context: vscode.ExtensionContext): Promise<voi
   await context.secrets.store(OPENAI_KEY, apiKey.trim());
   await context.globalState.update(AI_PROVIDER_KEY, provider.value);
   await context.globalState.update(AI_MODEL_KEY, model.trim());
-  vscode.window.showInformationMessage(`Agent Board AI configured with ${model.trim()}.`);
+  vscode.window.showInformationMessage(`Trellis AI configured with ${model.trim()}.`);
 }
 
 export async function configureSpecProvider(context: vscode.ExtensionContext): Promise<void> {
@@ -63,7 +63,7 @@ export async function configureSpecProvider(context: vscode.ExtensionContext): P
       { label: 'Claude Code', value: 'claude-code' as const, description: 'Use your signed-in Claude Code CLI with claude -p' },
       { label: 'OpenAI API key', value: 'openai' as const, description: 'Use the Responses API from the extension' }
     ],
-    { title: 'Agent Board Spec Generation Provider' }
+    { title: 'Trellis Spec Generation Provider' }
   );
   if (!choice) {
     return;
@@ -76,7 +76,7 @@ export async function configureSpecProvider(context: vscode.ExtensionContext): P
     return;
   }
 
-  vscode.window.showInformationMessage(`Agent Board spec provider set to ${choice.label}.`);
+  vscode.window.showInformationMessage(`Trellis spec provider set to ${choice.label}.`);
 }
 
 export function getSpecProvider(context: vscode.ExtensionContext): SpecProvider | undefined {
@@ -96,7 +96,7 @@ export function specProviderLabel(provider: SpecProvider | undefined): string {
 
 export async function clearAi(context: vscode.ExtensionContext): Promise<void> {
   await resetAiSettings(context);
-  vscode.window.showInformationMessage('Agent Board AI settings cleared.');
+  vscode.window.showInformationMessage('Trellis AI settings cleared.');
 }
 
 export async function hasAiSettings(context: vscode.ExtensionContext): Promise<boolean> {
@@ -158,7 +158,7 @@ async function resolveSpecProvider(context: vscode.ExtensionContext): Promise<Sp
       { label: 'Claude Code', value: 'claude-code' as const, description: 'Uses your existing Claude Code sign-in' },
       { label: 'OpenAI API key', value: 'openai' as const, description: 'Uses direct API access from the extension' }
     ],
-    { title: 'Choose how Agent Board should generate specs' }
+    { title: 'Choose how Trellis should generate specs' }
   );
 
   if (!choice) {

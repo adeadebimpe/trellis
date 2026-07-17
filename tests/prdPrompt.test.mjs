@@ -41,7 +41,7 @@ const task = {
 
 const project = {
   version: 1,
-  overview: 'This is a VS Code extension called Agent Board.',
+  overview: 'This is a VS Code extension called Trellis.',
   goals: ['Coordinate coding agents'],
   architectureNotes: 'Extension backend in src and React webview in webview.',
   codingRules: ['Preserve unknown task fields.'],
@@ -65,7 +65,7 @@ assert.equal(getPrdSourceBrief(task), task.brief);
 const prompt = buildPrdPrompt(task, project);
 assert.match(prompt, /userBrief/);
 assert.match(prompt, /Let shoppers save a delivery note/);
-assert.match(prompt, /Do not treat task ids, task JSON fields, Agent Board internals, or projectContext text as the feature request/);
+assert.match(prompt, /Do not treat task ids, task JSON fields, Trellis internals, or projectContext text as the feature request/);
 assert.match(prompt, /Do not write about updating task JSON/);
 assert.doesNotMatch(prompt, /TASK-003 JSON has/);
 assert.doesNotMatch(prompt, /existingGenerated/);

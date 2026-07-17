@@ -3,21 +3,21 @@ import * as vscode from 'vscode';
 export type AgentCli = 'codex' | 'claude';
 
 export function signInCodexCli(): void {
-  const terminal = getTerminal('Agent Board: Codex Sign In');
+  const terminal = getTerminal('Trellis: Codex Sign In');
   terminal.show();
   terminal.sendText('codex');
   vscode.window.showInformationMessage('Codex sign-in opened in the terminal. If prompted, sign in with ChatGPT or an API key.');
 }
 
 export function signInClaudeCode(): void {
-  const terminal = getTerminal('Agent Board: Claude Sign In');
+  const terminal = getTerminal('Trellis: Claude Sign In');
   terminal.show();
   terminal.sendText('claude auth login');
   vscode.window.showInformationMessage('Claude Code sign-in opened in the terminal. Complete the browser login or paste the returned code if prompted.');
 }
 
 export function generateClaudeAutomationToken(): void {
-  const terminal = getTerminal('Agent Board: Claude Token');
+  const terminal = getTerminal('Trellis: Claude Token');
   terminal.show();
   terminal.sendText('claude setup-token');
   vscode.window.showInformationMessage('Claude Code token setup opened in the terminal. Store the token only where you intentionally want automation to run.');
@@ -42,7 +42,7 @@ export async function chooseAgentSignIn(): Promise<void> {
         value: 'claude-token'
       }
     ],
-    { title: 'Agent Board Sign In' }
+    { title: 'Trellis Sign In' }
   );
 
   if (choice?.value === 'codex') {

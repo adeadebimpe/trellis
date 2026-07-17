@@ -14,7 +14,7 @@ export function agentsMarkdown(): string {
 
 ## Agent Board Workflow
 
-This repository uses Agent Board as the source of truth for AI coding work. Task state lives in \`.agent-board/tasks/*.json\` in the MAIN checkout; do not rely on copied prompts as the durable task record.
+This repository uses Trellis as the source of truth for AI coding work. Task state lives in \`.agent-board/tasks/*.json\` in the MAIN checkout; do not rely on copied prompts as the durable task record.
 
 Agents should follow this workflow:
 
@@ -30,14 +30,14 @@ Agents should follow this workflow:
 10. QA agents claim ready QA work with \`node .agent-board/scripts/start-qa.mjs TASK-ID codex\` (or \`claude\`), review acceptance criteria and changed files in the worktree, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`. Passing QA requires the task to be \`qa-running\`, non-empty \`qaEvidence\`, and a passing validation run.
 11. If blocked, add a blocker note, append an activity entry, and set \`status\` to \`human-review\`.
 
-Preserve unknown fields in Agent Board JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.
+Preserve unknown fields in Trellis JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.
 `;
 }
 
 export function claudeSkillMarkdown(): string {
-  return `# Agent Board
+  return `# Trellis
 
-Use Agent Board when asked to continue project work in this repository.
+Use Trellis when asked to continue project work in this repository.
 
 ## Workflow
 
@@ -60,7 +60,7 @@ The main checkout's \`.agent-board/\` folder is the source of truth. Preserve un
 
 export function boardLibScript(): string {
   return `#!/usr/bin/env node
-// Shared helpers for Agent Board scripts. Task state always lives in the MAIN
+// Shared helpers for Trellis scripts. Task state always lives in the MAIN
 // git worktree's .agent-board/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';

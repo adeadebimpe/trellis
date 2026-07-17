@@ -32,7 +32,7 @@ if (watch) {
     esbuild.context(webviewConfig)
   ]);
   await Promise.all(contexts.map((context) => context.watch()));
-  console.log('Watching Agent Board extension and webview...');
+  console.log('Watching Trellis extension and webview...');
 } else {
   await Promise.all([
     esbuild.build(extensionConfig),
