@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel } from './ai';
+import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel, SpecProvider } from './ai';
 import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, signInCodexCli } from './cliAuth';
 import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
@@ -34,7 +34,7 @@ let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
 function detectAvailableAgents(force = false): Promise<CliAgent[]> {
   if (!detectedAgentsPromise || force) {
     detectedAgentsPromise = Promise.all(
-      (['claude', 'codex'] as const).map((agent) =>
+      (['codex', 'claude'] as const).map((agent) =>
         execFileAsync(agent, ['--version'], { timeout: 10000 }).then(() => agent, () => undefined)
       )
     ).then((results) => results.filter((agent): agent is CliAgent => Boolean(agent)));
@@ -383,11 +383,15 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'Generating PRD...', cancellable: false },
       async () => {
-        let provider = getSpecProvider(context);
+        let provider: SpecProvider | undefined = task.assignedAgent === 'codex'
+          ? 'codex-cli'
+          : task.assignedAgent === 'claude'
+            ? 'claude-code'
+            : getSpecProvider(context);
         if (!provider) {
           // Fall back to whichever agent CLI is installed instead of blocking on setup.
           const available = await detectAvailableAgents();
-          provider = available.includes('claude') ? 'claude-code' : available.includes('codex') ? 'codex-cli' : undefined;
+          provider = available.includes('codex') ? 'codex-cli' : available.includes('claude') ? 'claude-code' : undefined;
           if (provider) {
             await setSpecProvider(context, provider);
           }
@@ -399,7 +403,7 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
 
         let aiPatch;
         try {
-          aiPatch = await generateAgentSpecWithAi(context, task, state.project, storage.root.fsPath);
+          aiPatch = await generateAgentSpecWithAi(context, task, state.project, storage.root.fsPath, provider);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           vscode.window.showErrorMessage(`${specProviderLabel(provider)} could not generate the PRD. Task was not changed. ${message}`);

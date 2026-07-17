@@ -13,7 +13,7 @@ const SPEC_PROVIDER_KEY = 'agentBoard.specProvider';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 const CLI_TIMEOUT_MS = 120000;
 
-type SpecProvider = 'openai' | 'codex-cli' | 'claude-code';
+export type SpecProvider = 'openai' | 'codex-cli' | 'claude-code';
 
 interface AiSettings {
   provider: 'openai';
@@ -115,9 +115,10 @@ export async function generateAgentSpecWithAi(
   context: vscode.ExtensionContext,
   task: AgentBoardTask,
   project: ProjectContext,
-  workspacePath: string
+  workspacePath: string,
+  providerOverride?: SpecProvider
 ): Promise<AgentSpecPatch | undefined> {
-  const provider = await resolveSpecProvider(context);
+  const provider = providerOverride ?? await resolveSpecProvider(context);
   if (provider === 'codex-cli') {
     return callCodexCli(task, project, workspacePath);
   }
