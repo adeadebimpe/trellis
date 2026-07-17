@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
 import { withLock } from './locks';
 import { deriveTaskTitle } from './prdPrompt';
+import { selectDoneTasksToArchive } from './archive';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
 const execFileAsync = promisify(execFile);
@@ -86,6 +87,14 @@ export class AgentBoardStorage {
       await this.prepareAgentFiles();
       tasks = await this.loadTasks();
     }
+    const archivedIds = selectDoneTasksToArchive(tasks);
+    for (const id of archivedIds) {
+      await this.archiveTask(id);
+    }
+    if (archivedIds.length) {
+      const archived = new Set(archivedIds);
+      tasks = tasks.filter((task) => !archived.has(task.id));
+    }
     const project = await this.loadProjectContext();
     const board: AgentBoardFile = {
       version: 1,
@@ -100,8 +109,9 @@ export class AgentBoardStorage {
     await this.prepareAgentFiles();
     return this.withTaskLock('_board', 'vscode', async () => {
       const tasks = await this.loadTasks();
-      const nextNumber = tasks
-        .map((task) => Number(task.id.replace(/^TASK-/, '')))
+      const archivedIds = await this.loadArchivedTaskIds();
+      const nextNumber = [...tasks.map((task) => task.id), ...archivedIds]
+        .map((id) => Number(id.replace(/^TASK-/, '')))
         .filter(Number.isFinite)
         .reduce((max, value) => Math.max(max, value), 0) + 1;
       const id = `TASK-${String(nextNumber).padStart(3, '0')}`;
@@ -523,6 +533,17 @@ export class AgentBoardStorage {
       .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.json'))
       .map(([name]) => this.readJson<AgentBoardTask>(vscode.Uri.joinPath(this.boardDir, 'tasks', name))));
     return tasks.map((task) => this.normalizeTask(task)).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private async loadArchivedTaskIds(): Promise<string[]> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(this.boardDir, 'archive'));
+      return entries
+        .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.json'))
+        .map(([name]) => name.slice(0, -'.json'.length));
+    } catch {
+      return [];
+    }
   }
 
   private normalizeTask(task: AgentBoardTask): AgentBoardTask {
