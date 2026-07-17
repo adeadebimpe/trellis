@@ -150,7 +150,7 @@ async function shipViaLocalMerge(
   }
 
   try {
-    await run('git', ['merge', '--no-ff', task.branchName, '-m', `Merge ${task.branchName} (Agent Board ${task.id})`], mainRoot, 120000);
+    await run('git', ['merge', '--no-ff', task.branchName, '-m', `Merge ${task.branchName} (Trellis ${task.id})`], mainRoot, 120000);
   } catch (error) {
     await tryRun('git', ['merge', '--abort'], mainRoot);
     await recordBlocker(storage, task, `Local merge of ${task.branchName} failed and was aborted. ${errorText(error)}`, expectedLastUpdated);

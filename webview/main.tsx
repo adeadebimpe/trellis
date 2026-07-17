@@ -380,10 +380,10 @@ function App(): JSX.Element {
   if (state && !state.settings.setupComplete) {
     return (
       <main className="shell">
-        <section className="setupScreen" aria-label="Agent Board setup">
+        <section className="setupScreen" aria-label="Trellis setup">
           <div className="setupPanel">
             <p className="eyebrow">First run setup</p>
-            <h1>Connect Agent Board</h1>
+            <h1>Connect Trellis</h1>
             <p>
               Sign in once with the agent CLI you want to use for PRD generation and task execution. Codex and Claude keep their own credentials, so you do not need to sign in again on every refresh.
             </p>
@@ -403,7 +403,7 @@ function App(): JSX.Element {
     <main className="shell">
       <header className="topbar">
         <div>
-          <h1>Agent Board</h1>
+          <h1>Trellis</h1>
         </div>
         {generatingIds.length > 0 && (
           <p className="topbarNote">Drafting PRD… You can close this — generation continues in the background.</p>
@@ -447,12 +447,12 @@ function App(): JSX.Element {
         <section className="emptyBoard">
           <div>
             <h2>No tasks yet</h2>
-            <p>Describe what you want built. Agent Board drafts the PRD, assigns an agent, and queues it on the board.</p>
+            <p>Describe what you want built. Trellis drafts the PRD, assigns an agent, and queues it on the board.</p>
             <button className="primary" onClick={() => setComposerOpen(true)}>New task</button>
           </div>
         </section>
       ) : (
-      <section className="board" aria-label="Agent Board columns">
+      <section className="board" aria-label="Trellis columns">
         {state?.board.columns.map((column) => {
           const tasks = state.tasks.filter((task) => task.status === column.id);
           const collapsed = hostMode === 'sidebar' && Boolean(collapsedLanes[column.id]);

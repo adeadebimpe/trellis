@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 
 type AgentKind = 'build' | 'qa';
 const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
-const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
+const TERMINAL_NAME_PATTERN = /^(?:Trellis|Agent Board): (\S+) (build|qa) /;
 const autoQaStarting = new Set<string>();
 const autoQaAttemptedVersions = new Map<string, string>();
 const autoRepairStarting = new Set<string>();
@@ -67,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('agentBoard.prepareAgentFiles', async () => {
       const storage = await resolveStorage();
       await storage.prepareAgentFiles();
-      vscode.window.showInformationMessage('Agent Board files are ready.');
+      vscode.window.showInformationMessage('Trellis files are ready.');
       await postState();
     })
   );
@@ -159,7 +159,7 @@ async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promi
     vscode.window.showWarningMessage(`Agent terminal for ${taskId} closed while it was ${task.status}. The task was moved to Human Review.`);
     await postState();
   } catch (error) {
-    console.error('Agent Board: failed to handle closed agent terminal', error);
+    console.error('Trellis: failed to handle closed agent terminal', error);
   }
 }
 
@@ -179,7 +179,7 @@ async function openBoard(context: vscode.ExtensionContext): Promise<void> {
     return;
   }
 
-  panel = vscode.window.createWebviewPanel('agentBoard', 'Agent Board', vscode.ViewColumn.One, {
+  panel = vscode.window.createWebviewPanel('agentBoard', 'Trellis', vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,
     localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')]
@@ -527,7 +527,7 @@ async function runAgentBoardScript(workspacePath: string, args: string[]): Promi
   try {
     await execFileAsync('node', args, { cwd: workspacePath, timeout: 20000 });
   } catch (error) {
-    throw new Error(`Agent Board could not claim the task. ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Trellis could not claim the task. ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -550,7 +550,7 @@ async function launchAgentTerminal(
   }
 
   const terminal = vscode.window.createTerminal({
-    name: `Agent Board: ${taskId} ${kind} (${agentLabel(agent)})`,
+    name: `Trellis: ${taskId} ${kind} (${agentLabel(agent)})`,
     cwd: worktreePath || storage.root.fsPath
   });
   agentTerminals.set(taskId, { terminal, kind });
@@ -570,7 +570,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
   const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
-    `You are the assigned implementation agent for Agent Board task ${id}.`,
+    `You are the assigned implementation agent for Trellis task ${id}.`,
     worktreePath
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
       : 'Your working directory is the repository root.',
@@ -587,7 +587,7 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
   const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
-    `You are the QA agent for Agent Board task ${id}.`,
+    `You are the QA agent for Trellis task ${id}.`,
     worktreePath
       ? `Your working directory is the task's git worktree on branch ${branchName}; review the implementation here.`
       : 'Your working directory is the repository root.',
@@ -604,7 +604,7 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
   const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
-    `You are the implementation agent automatically repairing failed QA for Agent Board task ${id}.`,
+    `You are the implementation agent automatically repairing failed QA for Trellis task ${id}.`,
     worktreePath
       ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
       : 'Work in the repository root.',
@@ -632,8 +632,8 @@ function shellQuote(value: string): string {
 async function freshStart(context: vscode.ExtensionContext): Promise<void> {
   const storage = await resolveStorage();
   const choice = await vscode.window.showWarningMessage(
-    'Fresh start Agent Board?',
-    { modal: true, detail: 'Reset setup only clears saved Agent Board provider/onboarding state. Reset board files also recreates .agent-board/ for this workspace.' },
+    'Fresh start Trellis?',
+    { modal: true, detail: 'Reset setup only clears saved Trellis provider/onboarding state. Reset board files also recreates .agent-board/ for this workspace.' },
     'Reset setup only',
     'Reset board files'
   );
@@ -649,9 +649,9 @@ async function freshStart(context: vscode.ExtensionContext): Promise<void> {
     await storage.resetBoardFiles();
     panel?.webview.postMessage({ type: 'fresh-started' });
     sidebarView?.webview.postMessage({ type: 'fresh-started' });
-    vscode.window.showInformationMessage('Agent Board setup and .agent-board files were reset.');
+    vscode.window.showInformationMessage('Trellis setup and .agent-board files were reset.');
   } else {
-    vscode.window.showInformationMessage('Agent Board setup state was reset.');
+    vscode.window.showInformationMessage('Trellis setup state was reset.');
   }
 
   await postState();
@@ -816,7 +816,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri, host: Webvie
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <link rel="stylesheet" href="${styleUri}">
-  <title>Agent Board</title>
+  <title>Trellis</title>
 </head>
 <body data-host="${host}">
   <div id="root"></div>

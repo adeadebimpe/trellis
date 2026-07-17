@@ -96,7 +96,7 @@ export class AgentBoardStorage {
       });
       if (stdout.trim()) {
         vscode.window.showInformationMessage(
-          'Agent Board is now git-ignored, but existing board files are still tracked. To untrack them, run: git rm -r --cached .agent-board'
+          'Trellis is now git-ignored, but existing board files are still tracked. To untrack them, run: git rm -r --cached .agent-board'
         );
       }
     } catch {
@@ -466,7 +466,7 @@ export class AgentBoardStorage {
       architectureNotes: '',
       codingRules: [
         'Follow existing project patterns before introducing new abstractions.',
-        'Keep changes scoped to the active Agent Board task.',
+        'Keep changes scoped to the active Trellis task.',
         'Do not overwrite unrelated user or agent changes.'
       ],
       agentRules: [
@@ -729,13 +729,13 @@ export async function getWorkspaceStorage(): Promise<AgentBoardStorage> {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: 'Use Folder for Agent Board',
-    title: 'Select the repository folder Agent Board should use'
+    openLabel: 'Use Folder for Trellis',
+    title: 'Select the repository folder Trellis should use'
   });
 
   const uri = picked?.[0];
   if (!uri) {
-    throw new Error('Select a workspace folder before using Agent Board.');
+    throw new Error('Select a workspace folder before using Trellis.');
   }
 
   const name = uri.path.split('/').filter(Boolean).at(-1) ?? 'workspace';

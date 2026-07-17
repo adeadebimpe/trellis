@@ -1,14 +1,27 @@
 {
-  "name": "agent-board",
-  "displayName": "Agent Board",
-  "description": "A repo-native Kanban command centre for orchestrating AI coding agents in VS Code.",
-  "version": "0.0.11",
-  "publisher": "local",
+  "name": "trellis",
+  "displayName": "Trellis",
+  "description": "Structure autonomous coding work from task to verified code.",
+  "version": "0.1.0",
+  "publisher": "adebimpe",
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "media/marketplace-icon.png",
+  "galleryBanner": {
+    "color": "#151719",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": [
-    "Other"
+  "categories": ["Visualization", "Other"],
+  "keywords": [
+    "ai agents",
+    "kanban",
+    "codex",
+    "claude code",
+    "worktrees",
+    "task orchestration",
+    "code review"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -17,7 +30,7 @@
       "activitybar": [
         {
           "id": "agent-board",
-          "title": "Agent Board",
+          "title": "Trellis",
           "icon": "media/icon.svg"
         }
       ]
@@ -27,61 +40,61 @@
         {
           "type": "webview",
           "id": "agentBoard.boardView",
-          "name": "Agent Board",
-          "contextualTitle": "Agent Board"
+          "name": "Trellis",
+          "contextualTitle": "Trellis"
         }
       ]
     },
     "commands": [
       {
         "command": "agentBoard.openBoard",
-        "title": "Agent Board: Open Board"
+        "title": "Trellis: Open Board"
       },
       {
         "command": "agentBoard.prepareAgentFiles",
-        "title": "Agent Board: Prepare Agent Files"
+        "title": "Trellis: Prepare Agent Files"
       },
       {
         "command": "agentBoard.configureAi",
-        "title": "Agent Board: Configure AI"
+        "title": "Trellis: Configure AI"
       },
       {
         "command": "agentBoard.clearAi",
-        "title": "Agent Board: Clear AI Settings"
+        "title": "Trellis: Clear AI Settings"
       },
       {
         "command": "agentBoard.configureSpecProvider",
-        "title": "Agent Board: Configure Spec Generation"
+        "title": "Trellis: Configure Spec Generation"
       },
       {
         "command": "agentBoard.signInAgents",
-        "title": "Agent Board: Sign In to Agent CLI"
+        "title": "Trellis: Sign In to Agent CLI"
       },
       {
         "command": "agentBoard.signInCodex",
-        "title": "Agent Board: Sign In to Codex CLI"
+        "title": "Trellis: Sign In to Codex CLI"
       },
       {
         "command": "agentBoard.signInClaude",
-        "title": "Agent Board: Sign In to Claude Code"
+        "title": "Trellis: Sign In to Claude Code"
       },
       {
         "command": "agentBoard.setupClaudeToken",
-        "title": "Agent Board: Generate Claude Automation Token"
+        "title": "Trellis: Generate Claude Automation Token"
       },
       {
         "command": "agentBoard.freshStart",
-        "title": "Agent Board: Fresh Start"
+        "title": "Trellis: Fresh Start"
       }
     ],
     "configuration": {
-      "title": "Agent Board",
+      "title": "Trellis",
       "properties": {
         "agentBoard.gitignoreBoardDirectory": {
           "type": "boolean",
           "default": true,
           "title": "Git-ignore Board Directory",
-          "description": "Add .agent-board/ to the workspace root .gitignore. Disable this if you intentionally commit Agent Board tasks and project context."
+          "description": "Add .agent-board/ to the workspace root .gitignore. Disable this if you intentionally commit Trellis tasks and project context."
         },
         "agentBoard.autoContinue": {
           "type": "boolean",

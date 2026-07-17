@@ -7,6 +7,10 @@ node_modules/**
 src/**
 webview/**
 tests/**
-*.map
+docs/**
+AGENTS.md
+.gitignore
+media/marketplace-icon.svg
+**/*.map
 tsconfig.json
 esbuild.mjs
