@@ -407,6 +407,56 @@ select:focus-visible {
   display: none;
 }
 
+.laneToggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.laneToggle h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.laneToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chevron {
+  color: var(--subtle);
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 10px;
+  transition: transform 0.12s ease;
+}
+
+.chevronCollapsed {
+  transform: rotate(-90deg);
+}
+
+.laneCollapsed {
+  min-height: auto;
+  padding: 4px 10px;
+}
+
+.laneCollapsed .laneHeader {
+  margin-bottom: 0;
+}
+
+.laneDropTarget {
+  background: var(--accent-soft);
+}
+
 .laneHeader > span {
   background: transparent;
   border-radius: var(--radius-sm);

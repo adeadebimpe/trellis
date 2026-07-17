@@ -96,9 +96,22 @@ interface BoardState {
   };
 }
 
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
+declare function acquireVsCodeApi(): {
+  postMessage(message: unknown): void;
+  getState(): Record<string, unknown> | undefined;
+  setState(state: Record<string, unknown>): void;
+};
 
 const vscode = acquireVsCodeApi();
+
+// Explicit host flag stamped on <body> by getHtml() in src/extension.ts —
+// collapse affordances exist only in the narrow sidebar host.
+const hostMode: 'sidebar' | 'panel' = document.body.dataset.host === 'sidebar' ? 'sidebar' : 'panel';
+
+function readCollapsedLanes(): Record<string, boolean> {
+  const saved = vscode.getState()?.collapsedLanes;
+  return saved && typeof saved === 'object' ? (saved as Record<string, boolean>) : {};
+}
 
 const statusHints: Record<TaskStatus, string> = {
   backlog: 'Idea intake',
@@ -121,6 +134,8 @@ function App(): JSX.Element {
   const [projectFieldsOpen, setProjectFieldsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>(readCollapsedLanes);
+  const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [composerOpen, setComposerOpen] = useState(false);
@@ -314,6 +329,14 @@ function App(): JSX.Element {
     vscode.postMessage({ type: 'move-task', id, status, expectedLastUpdated: task?.lastUpdated });
   };
 
+  const toggleLane = (id: TaskStatus) => {
+    setCollapsedLanes((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      vscode.setState({ ...(vscode.getState() ?? {}), collapsedLanes: next });
+      return next;
+    });
+  };
+
   const updateProject = (next: ProjectContext) => {
     setProjectDraft(next);
     projectDraftRef.current = next;
@@ -423,24 +446,43 @@ function App(): JSX.Element {
       <section className="board" aria-label="Agent Board columns">
         {state?.board.columns.map((column) => {
           const tasks = state.tasks.filter((task) => task.status === column.id);
+          const collapsed = hostMode === 'sidebar' && Boolean(collapsedLanes[column.id]);
           return (
             <div
-              className="lane"
+              className={`lane${collapsed ? ' laneCollapsed' : ''}${collapsed && dropTarget === column.id ? ' laneDropTarget' : ''}`}
               key={column.id}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (collapsed) setDropTarget(column.id);
+              }}
+              onDragLeave={() => setDropTarget((current) => (current === column.id ? null : current))}
               onDrop={(event) => {
                 event.preventDefault();
                 if (dragId) moveTask(dragId, column.id);
                 setDragId(null);
+                setDropTarget(null);
               }}
             >
               <div className="laneHeader">
-                <div>
-                  <h2>{column.title}</h2>
-                  <p>{statusHints[column.id]}</p>
-                </div>
+                {hostMode === 'sidebar' ? (
+                  <button
+                    className="laneToggle"
+                    aria-expanded={!collapsed}
+                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${column.title}`}
+                    onClick={() => toggleLane(column.id)}
+                  >
+                    <span className={`chevron${collapsed ? ' chevronCollapsed' : ''}`} aria-hidden="true">▾</span>
+                    <h2>{column.title}</h2>
+                  </button>
+                ) : (
+                  <div>
+                    <h2>{column.title}</h2>
+                    <p>{statusHints[column.id]}</p>
+                  </div>
+                )}
                 <span>{tasks.length}</span>
               </div>
+              {!collapsed && (
               <div className="cards">
                 {tasks.map((task) => (
                   <button
@@ -449,7 +491,10 @@ function App(): JSX.Element {
                     key={task.id}
                     onClick={() => setSelectedId(task.id)}
                     onDragStart={() => setDragId(task.id)}
-                    onDragEnd={() => setDragId(null)}
+                    onDragEnd={() => {
+                      setDragId(null);
+                      setDropTarget(null);
+                    }}
                   >
                     <span className="cardMeta">
                       <strong>{task.id}</strong>
@@ -463,6 +508,7 @@ function App(): JSX.Element {
                   </button>
                 ))}
               </div>
+              )}
             </div>
           );
         })}

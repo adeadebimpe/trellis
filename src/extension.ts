@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext): void {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')]
           };
-          view.webview.html = getHtml(view.webview, context.extensionUri);
+          view.webview.html = getHtml(view.webview, context.extensionUri, 'sidebar');
           view.onDidDispose(() => {
             sidebarView = undefined;
           });
@@ -185,7 +185,7 @@ async function openBoard(context: vscode.ExtensionContext): Promise<void> {
     localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')]
   });
 
-  panel.webview.html = getHtml(panel.webview, context.extensionUri);
+  panel.webview.html = getHtml(panel.webview, context.extensionUri, 'panel');
   panel.onDidDispose(() => {
     panel = undefined;
   });
@@ -794,7 +794,9 @@ async function resolveStorage(): Promise<Awaited<ReturnType<typeof getWorkspaceS
   return activeStorage;
 }
 
-function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+type WebviewHost = 'sidebar' | 'panel';
+
+function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri, host: WebviewHost): string {
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'main.js'));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'main.css'));
   const nonce = getNonce();
@@ -807,7 +809,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   <link rel="stylesheet" href="${styleUri}">
   <title>Agent Board</title>
 </head>
-<body>
+<body data-host="${host}">
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
