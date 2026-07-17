@@ -719,6 +719,57 @@ select:focus-visible {
   opacity: 0.45;
 }
 
+.commentHistory {
+  border-left: 2px solid var(--accent);
+  display: grid;
+  gap: 10px;
+  margin: 6px 0 10px;
+  padding-left: 12px;
+}
+
+.commentHistoryHeader {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.commentHistoryHeader span {
+  color: var(--subtle);
+  margin-left: 5px;
+}
+
+.commentItem {
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+}
+
+.commentItem > div {
+  align-items: baseline;
+  color: var(--subtle);
+  display: flex;
+  font-size: 10px;
+  gap: 7px;
+}
+
+.commentItem strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.commentItem time { margin-left: auto; }
+
+.commentItem p {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 7px 0 0;
+  white-space: pre-wrap;
+}
+
 .props {
   border-bottom: 1px solid var(--line);
   border-top: 1px solid var(--line);

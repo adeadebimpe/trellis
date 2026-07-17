@@ -12,6 +12,14 @@ interface ActivityEntry {
   message: string;
 }
 
+interface TaskComment {
+  id: string;
+  author: string;
+  phase: 'human-review' | 'failed-qa';
+  message: string;
+  createdAt: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -31,6 +39,7 @@ interface Task {
   qaNotes: ActivityEntry[];
   qaEvidence: string[];
   activityLog: ActivityEntry[];
+  comments?: TaskComment[];
   claimedBy: string;
   qaClaimedBy: string;
   branchName: string;
@@ -654,20 +663,29 @@ function App(): JSX.Element {
             {draft.status === 'ready-for-qa' && (
               <Action label="QA is starting automatically…" onClick={() => undefined} disabled />
             )}
-            {draft.status === 'failed-qa' && (
-              <Action label="Returning to build for repair…" onClick={() => undefined} disabled />
-            )}
+            {draft.status === 'failed-qa' && <p className="automationHint">Add context below while this task waits to return to Building.</p>}
             {draft.status === 'qa-running' && (
               <p className="automationHint">QA is running and will record pass or fail automatically.</p>
             )}
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
             )}
-            {draft.status === 'human-review' && (
-              <section className="reviewPanel" aria-label="Request changes">
+            {(draft.comments ?? []).length > 0 && (
+              <section className="commentHistory" aria-label="Agent comments">
+                <div className="commentHistoryHeader">Comments <span>{draft.comments!.length}</span></div>
+                {draft.comments!.slice().reverse().map((comment) => (
+                  <article className="commentItem" key={comment.id}>
+                    <div><strong>{comment.author}</strong><span>{comment.phase.replace('-', ' ')}</span><time>{formatTimelineTime(comment.createdAt)}</time></div>
+                    <p>{comment.message}</p>
+                  </article>
+                ))}
+              </section>
+            )}
+            {(draft.status === 'human-review' || draft.status === 'failed-qa') && (
+              <section className="reviewPanel" aria-label="Comment and send to agent">
                 <div>
-                  <span className="reviewLabel">Request changes</span>
-                  <p>Describe what needs another pass. Your comment is added to the task history and the build agent starts immediately.</p>
+                  <span className="reviewLabel">Comment to agent</span>
+                  <p>Add the missing context or requested change. It stays with the task and the build agent starts immediately.</p>
                 </div>
                 <textarea
                   value={reviewFeedback}
@@ -689,7 +707,7 @@ function App(): JSX.Element {
                     });
                   }}
                 >
-                  {reviewSubmitting ? 'Sending back…' : 'Send back to Building'}
+                  {reviewSubmitting ? 'Sending…' : 'Comment & send to Building'}
                 </button>
               </section>
             )}

@@ -19,6 +19,14 @@ export interface ActivityEntry {
   message: string;
 }
 
+export interface TaskComment {
+  id: string;
+  author: string;
+  phase: 'human-review' | 'failed-qa';
+  message: string;
+  createdAt: string;
+}
+
 export interface ValidationResult {
   command: string;
   exitCode: number;
@@ -60,6 +68,7 @@ export interface AgentBoardTask {
   qaNotes: ActivityEntry[];
   qaEvidence: string[];
   activityLog: ActivityEntry[];
+  comments?: TaskComment[];
   claimedBy: string;
   qaClaimedBy: string;
   branchName: string;

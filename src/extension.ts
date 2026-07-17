@@ -242,17 +242,22 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           throw new Error('Add a review comment before sending the task back to Building.');
         }
         const current = findTask((await storage.loadBoardState()).tasks, message.id);
-        if (current.status !== 'human-review') {
-          throw new Error('Only tasks in Human Review can be sent back to Building.');
+        if (current.status !== 'human-review' && current.status !== 'failed-qa') {
+          throw new Error('Comments can send tasks back from Human Review or Failed QA.');
         }
         const now = new Date().toISOString();
+        const phase = current.status;
         await storage.saveTask({
           task: {
             id: current.id,
             status: 'building',
+            comments: [
+              ...(current.comments ?? []),
+              { id: `${current.id}-${Date.now()}`, author: 'human', phase, message: feedback, createdAt: now }
+            ],
             activityLog: [
               ...(current.activityLog ?? []),
-              { timestamp: now, actor: 'human-review', message: `Changes requested: ${feedback}` }
+              { timestamp: now, actor: 'human', message: `Comment from ${phase}: ${feedback}` }
             ]
           },
           expectedLastUpdated: message.expectedLastUpdated
@@ -570,7 +575,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
       : 'Your working directory is the repository root.',
     `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
-    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest activityLog and qaNotes entries for human or QA feedback.`,
+    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
     `Then run node "${scripts}/claim-next-task.mjs" ${agent}. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
@@ -603,7 +608,7 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
     worktreePath
       ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
       : 'Work in the repository root.',
-    `Read the durable task record at ${taskFile}, especially the latest qaNotes, qaEvidence, activityLog, and failed validation output.`,
+    `Read the durable task record at ${taskFile}, especially the latest comments, qaNotes, qaEvidence, activityLog, and failed validation output.`,
     `Also read ${mainRoot}/.agent-board/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
     `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
