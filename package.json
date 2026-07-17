@@ -97,8 +97,9 @@
     "watch": "node esbuild.mjs --watch",
     "test:prd": "node tests/prdPrompt.test.mjs",
     "test:gitignore": "node tests/gitignore.test.mjs",
+    "test:archive": "node tests/archive.test.mjs",
     "test:scripts": "node tests/scripts.test.mjs",
-    "test": "npm run test:prd && npm run test:gitignore && npm run test:scripts",
+    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:scripts",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"
