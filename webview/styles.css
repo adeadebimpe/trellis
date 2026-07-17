@@ -460,6 +460,45 @@ h1 {
   padding: 6px 10px;
 }
 
+.reviewPanel {
+  background: rgba(242, 153, 74, 0.06);
+  border: 1px solid rgba(242, 153, 74, 0.28);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding: 12px;
+}
+
+.reviewPanel p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.reviewLabel {
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reviewPanel textarea {
+  min-height: 92px;
+  width: 100%;
+}
+
+.reviewSubmit {
+  justify-self: start;
+}
+
+.reviewSubmit:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .quickControls {
   background: transparent;
   border: 1px solid var(--line);

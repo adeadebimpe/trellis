@@ -186,6 +186,32 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await storage.moveTask(message.id, message.status, message.expectedLastUpdated);
         await postState();
         break;
+      case 'request-changes': {
+        const feedback = String(message.feedback ?? '').trim();
+        if (!feedback) {
+          throw new Error('Add a review comment before sending the task back to Building.');
+        }
+        const current = findTask((await storage.loadBoardState()).tasks, message.id);
+        if (current.status !== 'human-review') {
+          throw new Error('Only tasks in Human Review can be sent back to Building.');
+        }
+        const now = new Date().toISOString();
+        await storage.saveTask({
+          task: {
+            id: current.id,
+            status: 'building',
+            activityLog: [
+              ...(current.activityLog ?? []),
+              { timestamp: now, actor: 'human-review', message: `Changes requested: ${feedback}` }
+            ]
+          },
+          expectedLastUpdated: message.expectedLastUpdated
+        });
+        await runStartBuildAction(current.id);
+        webview.postMessage({ type: 'review-feedback-sent', id: current.id });
+        await postState();
+        break;
+      }
       case 'delete-task':
         await storage.deleteTask(message.id);
         webview.postMessage({ type: 'task-deleted', id: message.id });
@@ -457,7 +483,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
       : 'Your working directory is the repository root.',
     `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
-    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing.`,
+    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest activityLog and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
     'If blocked, update the task with a blocker note and move it to human-review.'

@@ -115,6 +115,8 @@ function App(): JSX.Element {
   const [dragId, setDragId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [reviewFeedback, setReviewFeedback] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const selected = state?.tasks.find((task) => task.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -136,10 +138,15 @@ function App(): JSX.Element {
       if (event.data.type === 'error') {
         setSaveState('error');
         setProjectSaveState('error');
+        setReviewSubmitting(false);
       }
       if (event.data.type === 'saved-project') {
         setProjectSaveState('saved');
         window.setTimeout(() => setProjectSaveState('idle'), 1400);
+      }
+      if (event.data.type === 'review-feedback-sent') {
+        setReviewFeedback('');
+        setReviewSubmitting(false);
       }
       if (event.data.type === 'select-task') {
         setSelectedId(event.data.id);
@@ -166,6 +173,8 @@ function App(): JSX.Element {
 
   useEffect(() => {
     setConfirmDelete(false);
+    setReviewFeedback('');
+    setReviewSubmitting(false);
   }, [selectedId]);
 
   const sendAction = (task: Task, action: string) => {
@@ -396,6 +405,36 @@ function App(): JSX.Element {
             )}
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
+            )}
+            {draft.status === 'human-review' && (
+              <section className="reviewPanel" aria-label="Request changes">
+                <div>
+                  <span className="reviewLabel">Request changes</span>
+                  <p>Describe what needs another pass. Your comment is added to the task history and the build agent starts immediately.</p>
+                </div>
+                <textarea
+                  value={reviewFeedback}
+                  onChange={(event) => setReviewFeedback(event.target.value)}
+                  placeholder="For example: Keep the inferred context editable after saving, and preserve my existing architecture notes."
+                  rows={4}
+                />
+                <button
+                  className="danger reviewSubmit"
+                  disabled={!reviewFeedback.trim() || reviewSubmitting || draft.assignedAgent === 'unassigned'}
+                  title={draft.assignedAgent === 'unassigned' ? 'Assign a build agent before requesting changes.' : undefined}
+                  onClick={() => {
+                    setReviewSubmitting(true);
+                    vscode.postMessage({
+                      type: 'request-changes',
+                      id: draft.id,
+                      feedback: reviewFeedback,
+                      expectedLastUpdated: selected?.lastUpdated
+                    });
+                  }}
+                >
+                  {reviewSubmitting ? 'Sending back…' : 'Send back to Building'}
+                </button>
+              </section>
             )}
             {draft.status === 'human-review' && (
               <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: selected?.lastUpdated })} primary />
