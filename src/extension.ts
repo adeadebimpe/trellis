@@ -21,6 +21,8 @@ const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentK
 const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
 const autoQaStarting = new Set<string>();
 const autoQaAttemptedVersions = new Map<string, string>();
+const autoRepairStarting = new Set<string>();
+const autoRepairAttemptedVersions = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext): void {
   activeContext = context;
@@ -479,6 +481,22 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
   ].join('\n');
 }
 
+function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
+  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.agent-board/scripts`;
+  return [
+    `You are the implementation agent automatically repairing failed QA for Agent Board task ${id}.`,
+    worktreePath
+      ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
+      : 'Work in the repository root.',
+    `Read the durable task record at ${taskFile}, especially the latest qaNotes, qaEvidence, activityLog, and failed validation output.`,
+    `Also read ${mainRoot}/.agent-board/project.json before editing.`,
+    'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
+    `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
+    'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
+  ].join('\n');
+}
+
 function agentCommand(agent: Exclude<AssignedAgent, 'unassigned'>): string {
   return agent === 'claude' ? 'claude' : 'codex';
 }
@@ -530,6 +548,7 @@ function scheduleRefresh(): void {
 
 async function refreshBoard(): Promise<void> {
   await startReadyQaTasks();
+  await startFailedQaRepairs();
   await postState();
 }
 
@@ -553,6 +572,46 @@ async function startReadyQaTasks(): Promise<void> {
       vscode.window.showErrorMessage(`Automatic QA could not start for ${task.id}. ${message}`);
     } finally {
       autoQaStarting.delete(task.id);
+    }
+  }));
+}
+
+async function startFailedQaRepairs(): Promise<void> {
+  const storage = await resolveStorage();
+  const { tasks } = await storage.loadBoardState();
+  const failed = tasks.filter((task) =>
+    task.status === 'failed-qa'
+    && agentTerminals.get(task.id)?.kind !== 'build'
+    && !autoRepairStarting.has(task.id)
+    && autoRepairAttemptedVersions.get(task.id) !== task.lastUpdated
+  );
+
+  await Promise.all(failed.map(async (task) => {
+    autoRepairStarting.add(task.id);
+    autoRepairAttemptedVersions.set(task.id, task.lastUpdated);
+    try {
+      const agent = requireAgent(task.assignedAgent, 'Assign a Codex or Claude build agent before automatic repair can start.');
+      await ensureAgentCliAvailable(agent);
+      const now = new Date().toISOString();
+      const repairing = await storage.saveTask({
+        task: {
+          id: task.id,
+          status: 'building',
+          activityLog: [
+            ...(task.activityLog ?? []),
+            { timestamp: now, actor: 'vscode', message: 'QA failed. Returned to building and started an automatic repair.' }
+          ]
+        },
+        expectedLastUpdated: task.lastUpdated
+      });
+      const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName);
+      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath);
+      vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Automatic QA repair could not start for ${task.id}. ${message}`);
+    } finally {
+      autoRepairStarting.delete(task.id);
     }
   }));
 }

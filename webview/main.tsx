@@ -379,25 +379,21 @@ function App(): JSX.Element {
                   : undefined}
             />
             {draft.status === 'building' && (
-              <p className="automationHint">QA starts automatically after the build agent validates and completes this task.</p>
+              <p className="automationHint">
+                {(draft.qaNotes ?? []).length
+                  ? 'The build agent is repairing the latest QA feedback. QA will run again automatically.'
+                  : 'QA starts automatically after the build agent validates and completes this task.'}
+              </p>
             )}
             {draft.status === 'ready-for-qa' && (
               <Action label="QA is starting automatically…" onClick={() => undefined} disabled />
             )}
             {draft.status === 'failed-qa' && (
-              <Action
-                label="Retry QA"
-                onClick={() => sendAction(draft, 'start-qa')}
-                disabled={draft.qaAgent === 'unassigned'}
-                title={draft.qaAgent === 'unassigned' ? 'Assign a QA agent first.' : 'Failed QA only retries when you choose to run it again.'}
-              />
+              <Action label="Returning to build for repair…" onClick={() => undefined} disabled />
             )}
-            <Action
-              label="Pass QA"
-              onClick={() => sendAction(draft, 'pass-qa')}
-              disabled={draft.status !== 'qa-running'}
-              title={draft.status !== 'qa-running' ? 'QA must be running to pass it.' : undefined}
-            />
+            {draft.status === 'qa-running' && (
+              <p className="automationHint">QA is running and will record pass or fail automatically.</p>
+            )}
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
             )}
