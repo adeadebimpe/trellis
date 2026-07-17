@@ -255,6 +255,11 @@ export class AgentBoardStorage {
     const merged: ProjectContext = {
       ...existing,
       ...project,
+      contextMode: ['lean', 'standard', 'full'].includes(project.contextMode ?? '') ? project.contextMode : (existing.contextMode ?? 'standard'),
+      contextProfiles: {
+        ...existing.contextProfiles,
+        ...project.contextProfiles
+      },
       inference: {
         ...existing.inference,
         ...project.inference
@@ -443,6 +448,8 @@ export class AgentBoardStorage {
   private async defaultProjectContext(): Promise<ProjectContext> {
     return {
       version: 1,
+      contextMode: 'standard',
+      contextProfiles: {},
       contextNotes: '',
       overview: 'Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.',
       goals: [],

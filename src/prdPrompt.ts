@@ -33,25 +33,32 @@ export function clipTitle(text: string, maxLength = TITLE_MAX_LENGTH): string {
 
 export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): string {
   const userBrief = getPrdSourceBrief(task);
-  const projectContext = compactObject({
-    contextNotes: project.contextNotes,
-    overview: isDefaultOverview(project.overview) ? '' : project.overview,
-    goals: project.goals,
-    architectureNotes: project.architectureNotes,
+  const mode = project.contextMode ?? 'standard';
+  const commonContext = {
     codingRules: project.codingRules,
     agentRules: project.agentRules,
     validationCommands: project.validationCommands,
     designRules: project.designRules,
+    relevantFiles: project.inference?.detectedFiles,
+    contextProfiles: selectProfiles(project.contextProfiles, userBrief, mode)
+  };
+  const summaryContext = {
+    contextNotes: project.contextNotes,
+    overview: isDefaultOverview(project.overview) ? '' : project.overview,
+    goals: project.goals,
+    architectureNotes: project.architectureNotes,
     glossary: project.glossary,
     inference: {
       packageManager: project.inference?.packageManager,
       scripts: project.inference?.scripts,
-      detectedFiles: project.inference?.detectedFiles,
       likelyStack: project.inference?.likelyStack,
       suggestedValidation: project.inference?.suggestedValidation
     }
-  });
-  const input = compactObject({ userBrief, projectContext });
+  };
+  const projectContext = limitObject(compactObject(mode === 'lean'
+    ? commonContext
+    : { ...summaryContext, ...commonContext }));
+  const input = compactObject({ userBrief: limitString(userBrief, 4000), contextMode: mode, projectContext });
   return [
     'You are a product/spec agent. Create an implementation-ready PRD for a coding agent.',
     'Return strict JSON only. Do not include markdown, commentary, or code fences.',
@@ -111,6 +118,37 @@ function compactValue(value: unknown): unknown | undefined {
     return Object.keys(compacted).length ? compacted : undefined;
   }
   return value ?? undefined;
+}
+
+function selectProfiles(
+  profiles: ProjectContext['contextProfiles'],
+  brief: string,
+  mode: ProjectContext['contextMode']
+): ProjectContext['contextProfiles'] {
+  if (!profiles) return {};
+  if (mode === 'full') return profiles;
+  const source = brief.toLowerCase();
+  const selected: ProjectContext['contextProfiles'] = {};
+  if (/\b(ui|ux|frontend|webview|react|css|component|page|sidebar|drawer)\b/.test(source)) selected.frontend = profiles.frontend;
+  if (/\b(api|backend|server|database|storage|endpoint|service)\b/.test(source)) selected.backend = profiles.backend;
+  if (/\b(infra|infrastructure|deploy|ci|cd|docker|cloud|pipeline|terraform)\b/.test(source)) selected.infrastructure = profiles.infrastructure;
+  return selected;
+}
+
+function limitObject(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, limitValue(entry)]));
+}
+
+function limitValue(value: unknown): unknown {
+  if (typeof value === 'string') return limitString(value, 1200);
+  if (Array.isArray(value)) return value.slice(0, 12).map((entry) => typeof entry === 'string' ? limitString(entry, 240) : limitValue(entry));
+  if (value && typeof value === 'object') return limitObject(value as Record<string, unknown>);
+  return value;
+}
+
+function limitString(value: string, maxLength: number): string {
+  const trimmed = value.trim();
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBoardTask, project: ProjectContext): AgentSpecPatch {

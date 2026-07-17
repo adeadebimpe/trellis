@@ -924,6 +924,62 @@ input.textInput {
   text-transform: uppercase;
 }
 
+.contextModeGroup {
+  border: 0;
+  margin: 18px 0 0;
+  padding: 0;
+}
+
+.contextModeGroup legend {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.contextModeOptions {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 3px;
+}
+
+.contextModeOptions label {
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.contextModeOptions label.selected {
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line);
+  color: var(--text);
+}
+
+.contextModeOptions input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.contextModeOptions label:has(input:focus-visible) {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.contextBudget {
+  color: var(--subtle);
+  font-size: 10px;
+  margin: 7px 1px 0;
+}
+
 .contextBlock {
   margin-top: 16px;
 }
