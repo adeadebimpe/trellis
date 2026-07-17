@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
 import { withLock } from './locks';
+import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
@@ -10,6 +11,7 @@ const execFileAsync = promisify(execFile);
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const trackedBoardNoticeRoots = new Set<string>();
 
 export class StaleTaskError extends Error {
   constructor() {
@@ -29,6 +31,7 @@ export class AgentBoardStorage {
   }
 
   async prepareAgentFiles(): Promise<void> {
+    await this.ensureRootGitignore();
     await this.ensureDir(this.boardDir);
     for (const dir of ['tasks', 'qa', 'scripts', 'locks', 'prompts', 'worktrees', 'archive']) {
       await this.ensureDir(vscode.Uri.joinPath(this.boardDir, dir));
@@ -58,6 +61,45 @@ export class AgentBoardStorage {
       await vscode.workspace.fs.delete(vscode.Uri.joinPath(this.boardDir, 'board.json'));
     } catch {
       // board.json is derived state and no longer persisted; nothing to clean.
+    }
+  }
+
+  private async ensureRootGitignore(): Promise<void> {
+    const enabled = vscode.workspace.getConfiguration('agentBoard', this.root)
+      .get<boolean>('gitignoreBoardDirectory', true);
+    if (!enabled || !await this.exists(vscode.Uri.joinPath(this.root, '.git'))) {
+      return;
+    }
+
+    const gitignoreUri = vscode.Uri.joinPath(this.root, '.gitignore');
+    let existing = '';
+    try {
+      existing = decoder.decode(await vscode.workspace.fs.readFile(gitignoreUri));
+    } catch {
+      // A missing root .gitignore is created below.
+    }
+    const next = ensureAgentBoardIgnore(existing);
+    if (next !== existing) {
+      await vscode.workspace.fs.writeFile(gitignoreUri, encoder.encode(next));
+    }
+
+    const rootPath = this.root.fsPath;
+    if (trackedBoardNoticeRoots.has(rootPath)) {
+      return;
+    }
+    trackedBoardNoticeRoots.add(rootPath);
+    try {
+      const { stdout } = await execFileAsync('git', ['ls-files', '--', '.agent-board'], {
+        cwd: rootPath,
+        timeout: 10000
+      });
+      if (stdout.trim()) {
+        vscode.window.showInformationMessage(
+          'Agent Board is now git-ignored, but existing board files are still tracked. To untrack them, run: git rm -r --cached .agent-board'
+        );
+      }
+    } catch {
+      // Ignore read-only Git inspection failures; initialization still succeeds.
     }
   }
 

@@ -73,14 +73,26 @@
         "command": "agentBoard.freshStart",
         "title": "Agent Board: Fresh Start"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Agent Board",
+      "properties": {
+        "agentBoard.gitignoreBoardDirectory": {
+          "type": "boolean",
+          "default": true,
+          "title": "Git-ignore Board Directory",
+          "description": "Add .agent-board/ to the workspace root .gitignore. Disable this if you intentionally commit Agent Board tasks and project context."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "test:prd": "node tests/prdPrompt.test.mjs",
+    "test:gitignore": "node tests/gitignore.test.mjs",
     "test:scripts": "node tests/scripts.test.mjs",
-    "test": "npm run test:prd && npm run test:scripts",
+    "test": "npm run test:prd && npm run test:gitignore && npm run test:scripts",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"
