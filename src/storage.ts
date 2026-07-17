@@ -220,11 +220,28 @@ export class AgentBoardStorage {
       ...existing,
       inference,
       validationCommands: existing.validationCommands.length ? existing.validationCommands : inference.suggestedValidation,
+      architectureNotes: existing.architectureNotes.trim()
+        ? existing.architectureNotes
+        : this.inferredArchitectureNotes(inference),
       lastUpdated: new Date().toISOString()
     };
     await this.writeJson(this.projectUri(), merged);
     await this.appendRootActivity('vscode', 'Inferred project context.');
     return merged;
+  }
+
+  private inferredArchitectureNotes(inference: ProjectInference): string {
+    const lines: string[] = [];
+    if (inference.likelyStack.length) {
+      lines.push(`Detected stack: ${inference.likelyStack.join(', ')}.`);
+    }
+    if (inference.packageManager) {
+      lines.push(`Package manager: ${inference.packageManager}.`);
+    }
+    if (inference.detectedFiles.length) {
+      lines.push(`Key files: ${inference.detectedFiles.join(', ')}.`);
+    }
+    return lines.join('\n');
   }
 
   async runAction(id: string, action: string, expectedLastUpdated?: string): Promise<AgentBoardTask> {
