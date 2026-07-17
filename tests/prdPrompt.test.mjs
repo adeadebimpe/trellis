@@ -76,10 +76,11 @@ assert.match(prompt, /Explore the repository/);
 assert.match(prompt, /"title": "string"/);
 
 const serializedInput = JSON.parse(prompt.slice(prompt.indexOf('Input:') + 'Input:'.length).trim());
-assert.deepEqual(Object.keys(serializedInput), ['userBrief', 'projectContext']);
+assert.deepEqual(Object.keys(serializedInput), ['userBrief', 'contextMode', 'projectContext']);
 assert.equal(serializedInput.userBrief, task.brief);
+assert.equal(serializedInput.contextMode, 'standard');
 assert.equal(serializedInput.projectContext.overview, project.overview);
-assert.deepEqual(serializedInput.projectContext.inference.detectedFiles, ['package.json']);
+assert.deepEqual(serializedInput.projectContext.relevantFiles, ['package.json']);
 assert.equal(serializedInput.projectContext.inference.lastInferred, undefined);
 
 const minimalPrompt = buildPrdPrompt({
@@ -113,8 +114,36 @@ const minimalPrompt = buildPrdPrompt({
   }
 });
 const minimalInput = JSON.parse(minimalPrompt.slice(minimalPrompt.indexOf('Input:') + 'Input:'.length).trim());
-assert.deepEqual(minimalInput, { userBrief: task.brief });
+assert.deepEqual(minimalInput, { userBrief: task.brief, contextMode: 'standard' });
 assert.doesNotMatch(minimalPrompt, /Old generated|old\/generated|old validation/);
+
+const profiledProject = {
+  ...project,
+  contextMode: 'lean',
+  contextProfiles: {
+    frontend: 'Use webview/components and theme variables.',
+    backend: 'Use service and storage boundaries.',
+    infrastructure: 'Use the deployment pipeline.'
+  }
+};
+const leanUiInput = JSON.parse(buildPrdPrompt({ ...task, brief: 'Improve the React sidebar UI' }, profiledProject).split('Input:\n')[1]);
+assert.equal(leanUiInput.projectContext.contextProfiles.frontend, profiledProject.contextProfiles.frontend);
+assert.equal(leanUiInput.projectContext.contextProfiles.backend, undefined);
+assert.equal(leanUiInput.projectContext.overview, undefined);
+assert.deepEqual(leanUiInput.projectContext.relevantFiles, ['package.json']);
+
+const fullInput = JSON.parse(buildPrdPrompt(task, { ...profiledProject, contextMode: 'full' }).split('Input:\n')[1]);
+assert.deepEqual(fullInput.projectContext.contextProfiles, profiledProject.contextProfiles);
+assert.equal(fullInput.projectContext.overview, project.overview);
+
+const limitedInput = JSON.parse(buildPrdPrompt(task, {
+  ...project,
+  contextNotes: 'x'.repeat(2000),
+  goals: Array.from({ length: 20 }, (_, index) => `Goal ${index}`)
+}).split('Input:\n')[1]);
+assert.equal(limitedInput.projectContext.contextNotes.length, 1200);
+assert.equal(limitedInput.projectContext.goals.length, 12);
+assert.ok(limitedInput.projectContext.contextNotes.endsWith('…'));
 
 const patch = normalizeSpecPatch({
   title: 'Delivery notes at checkout.',

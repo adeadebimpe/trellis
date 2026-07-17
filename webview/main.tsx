@@ -54,6 +54,12 @@ interface Task {
 
 interface ProjectContext {
   version: 1;
+  contextMode?: 'lean' | 'standard' | 'full';
+  contextProfiles?: {
+    frontend?: string;
+    backend?: string;
+    infrastructure?: string;
+  };
   contextNotes: string;
   overview: string;
   goals: string[];
@@ -713,6 +719,25 @@ function App(): JSX.Element {
             <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
           </div>
 
+          <fieldset className="contextModeGroup">
+            <legend>Context mode</legend>
+            <div className="contextModeOptions">
+              {(['lean', 'standard', 'full'] as const).map((mode) => (
+                <label className={(projectDraft.contextMode ?? 'standard') === mode ? 'selected' : ''} key={mode}>
+                  <input
+                    type="radio"
+                    name="context-mode"
+                    value={mode}
+                    checked={(projectDraft.contextMode ?? 'standard') === mode}
+                    onChange={() => updateProject({ ...projectDraft, contextMode: mode })}
+                  />
+                  <span>{mode[0].toUpperCase() + mode.slice(1)}</span>
+                </label>
+              ))}
+            </div>
+            <p className="contextBudget">≈ {estimateContextTokens(projectDraft).toLocaleString()} prompt tokens · estimate updates as you type</p>
+          </fieldset>
+
           <div className="contextBlock">
             <Field
               label="Project context"
@@ -759,6 +784,9 @@ function App(): JSX.Element {
               <ListField label="Agent rules" value={projectDraft.agentRules} onChange={(value) => updateProject({ ...projectDraft, agentRules: splitLines(value) })} />
               <ListField label="Design rules" value={projectDraft.designRules} onChange={(value) => updateProject({ ...projectDraft, designRules: splitLines(value) })} />
               <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => updateProject({ ...projectDraft, glossary: splitLines(value) })} />
+              <Field label="Frontend routing card" placeholder="UI architecture, component conventions, and key frontend paths." value={projectDraft.contextProfiles?.frontend ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, frontend: value } })} />
+              <Field label="Backend routing card" placeholder="Service boundaries, persistence conventions, and key backend paths." value={projectDraft.contextProfiles?.backend ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, backend: value } })} />
+              <Field label="Infrastructure routing card" placeholder="Deployment, CI, environments, and key infrastructure paths." value={projectDraft.contextProfiles?.infrastructure ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, infrastructure: value } })} />
             </div>
           )}
 
@@ -870,6 +898,28 @@ function cloneTask(task: Task): Task {
 
 function cloneProject(project: ProjectContext): ProjectContext {
   return JSON.parse(JSON.stringify(project)) as ProjectContext;
+}
+
+function estimateContextTokens(project: ProjectContext): number {
+  const mode = project.contextMode ?? 'standard';
+  const lean = {
+    codingRules: project.codingRules,
+    agentRules: project.agentRules,
+    validationCommands: project.validationCommands,
+    designRules: project.designRules,
+    relevantFiles: project.inference?.detectedFiles,
+    contextProfiles: project.contextProfiles
+  };
+  const selected = mode === 'lean' ? lean : {
+    ...lean,
+    contextNotes: project.contextNotes,
+    overview: project.overview,
+    goals: project.goals,
+    architectureNotes: project.architectureNotes,
+    glossary: project.glossary,
+    inference: project.inference
+  };
+  return Math.max(1, Math.ceil(JSON.stringify(selected).length / 4));
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

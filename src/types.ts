@@ -104,6 +104,12 @@ export interface ProjectInference {
 
 export interface ProjectContext {
   version: 1;
+  contextMode?: 'lean' | 'standard' | 'full';
+  contextProfiles?: {
+    frontend?: string;
+    backend?: string;
+    infrastructure?: string;
+  };
   contextNotes: string;
   overview: string;
   goals: string[];
