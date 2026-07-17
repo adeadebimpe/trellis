@@ -19,6 +19,8 @@ const execFileAsync = promisify(execFile);
 type AgentKind = 'build' | 'qa';
 const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
 const TERMINAL_NAME_PATTERN = /^Agent Board: (\S+) (build|qa) /;
+// Task ids with a PRD generation in flight, so reopened webviews can restore the indicator.
+const generatingSpecs = new Set<string>();
 
 type CliAgent = Exclude<AssignedAgent, 'unassigned'>;
 let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
@@ -194,11 +196,21 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         const task = await storage.createTask(brief
           ? { brief, assignedAgent: autoAgent, qaAgent: autoAgent }
           : undefined);
-        webview.postMessage({ type: 'select-task', id: task.id });
         await postState();
         if (brief) {
-          await runGenerateSpecAction(context, task.id, task.lastUpdated);
+          // Keep the panel closed while the PRD drafts; the webview only auto-opens
+          // on success and only if the user has not focused another task meanwhile.
+          const generated = await runGenerateSpecAction(context, task.id, task.lastUpdated);
           await postState();
+          if (generated) {
+            try {
+              webview.postMessage({ type: 'auto-select-task', id: task.id });
+            } catch {
+              // Webview closed during generation; the finished task is already on the board.
+            }
+          }
+        } else {
+          webview.postMessage({ type: 'select-task', id: task.id });
         }
         break;
       }
@@ -311,7 +323,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
   }
 }
 
-async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string): Promise<void> {
+async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string): Promise<boolean> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = state.tasks.find((item) => item.id === id);
@@ -320,9 +332,11 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
   }
   if (!getPrdSourceBrief(task)) {
     vscode.window.showWarningMessage('Add your rough feature idea in the Brief field before generating a PRD.');
-    return;
+    return false;
   }
 
+  let succeeded = false;
+  generatingSpecs.add(id);
   broadcast({ type: 'spec-generating', id });
   try {
     await vscode.window.withProgress(
@@ -372,11 +386,14 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
           },
           expectedLastUpdated
         }, provider);
+        succeeded = true;
       }
     );
   } finally {
+    generatingSpecs.delete(id);
     broadcast({ type: 'spec-generated', id });
   }
+  return succeeded;
 }
 
 function broadcast(message: unknown): void {
@@ -594,6 +611,7 @@ async function postState(): Promise<void> {
     state: {
       ...state,
       liveTerminals: [...agentTerminals.keys()],
+      generatingIds: [...generatingSpecs],
       settings: {
         specProvider: provider,
         specProviderLabel: specProviderLabel(provider),

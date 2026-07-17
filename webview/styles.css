@@ -251,6 +251,20 @@ h1 {
   animation: draftingPulse 1.6s ease-in-out infinite;
 }
 
+/* Lives inside the fixed-height topbar so appearing/disappearing never shifts the board. */
+.topbarNote {
+  animation: draftingPulse 1.6s ease-in-out infinite;
+  color: var(--muted);
+  flex: 1;
+  font-size: 12px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes draftingPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
