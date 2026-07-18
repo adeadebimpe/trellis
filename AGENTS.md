@@ -2,7 +2,7 @@
 
 ## Agent Board Workflow
 
-This repository uses Agent Board as the source of truth for AI coding work. Task state lives in `.agent-board/tasks/*.json` in the MAIN checkout; do not rely on copied prompts as the durable task record.
+This repository uses Trellis as the source of truth for AI coding work. Task state lives in `.agent-board/tasks/*.json` in the MAIN checkout; do not rely on copied prompts as the durable task record.
 
 Agents should follow this workflow:
 
@@ -18,4 +18,4 @@ Agents should follow this workflow:
 10. QA agents claim ready QA work with `node .agent-board/scripts/start-qa.mjs TASK-ID codex` (or `claude`), review acceptance criteria and changed files in the worktree, re-run `run-validation.mjs`, then `pass-qa.mjs TASK-ID "note"` or `fail-qa.mjs TASK-ID "specific failure reason"`. Passing QA requires the task to be `qa-running`, non-empty `qaEvidence`, and a passing validation run.
 11. If blocked, add a blocker note, append an activity entry, and set `status` to `human-review`.
 
-Preserve unknown fields in Agent Board JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.
+Preserve unknown fields in Trellis JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.

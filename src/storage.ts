@@ -316,11 +316,36 @@ export class AgentBoardStorage {
       architectureNotes: existing.architectureNotes.trim()
         ? existing.architectureNotes
         : this.inferredArchitectureNotes(inference),
+      // The scan's only visible surface is the Project context box, so seed it
+      // with a readable summary when the user has not written notes yet.
+      contextNotes: (existing.contextNotes ?? '').trim()
+        ? existing.contextNotes
+        : this.inferredContextNotes(inference),
       lastUpdated: new Date().toISOString()
     };
     await this.writeJson(this.projectUri(), merged);
     await this.appendRootActivity('vscode', 'Inferred project context.');
     return merged;
+  }
+
+  private inferredContextNotes(inference: ProjectInference): string {
+    const lines: string[] = [];
+    if (inference.likelyStack.length) {
+      lines.push(`Stack: ${inference.likelyStack.join(', ')}`);
+    }
+    if (inference.packageManager) {
+      lines.push(`Package manager: ${inference.packageManager}`);
+    }
+    if (inference.scripts.length) {
+      lines.push(`Scripts: ${inference.scripts.join(', ')}`);
+    }
+    if (inference.detectedFiles.length) {
+      lines.push(`Key files: ${inference.detectedFiles.join(', ')}`);
+    }
+    if (inference.suggestedValidation.length) {
+      lines.push(`Validation: ${inference.suggestedValidation.join(', ')}`);
+    }
+    return lines.join('\n');
   }
 
   private inferredArchitectureNotes(inference: ProjectInference): string {

@@ -50,5 +50,5 @@ await runScript(async () => {
     }
   }
 
-  throw fail(2, 'No ready task found for ' + agent + '.');
+  console.log(JSON.stringify({ noTask: true, agent, message: 'No eligible ready-for-agent tasks remain.' }));
 });

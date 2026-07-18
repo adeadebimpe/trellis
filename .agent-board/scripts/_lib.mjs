@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Shared helpers for Agent Board scripts. Task state always lives in the MAIN
+// Shared helpers for Trellis scripts. Task state always lives in the MAIN
 // git worktree's .agent-board/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';

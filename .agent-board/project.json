@@ -1,12 +1,14 @@
 {
   "version": 1,
+  "contextMode": "standard",
+  "contextProfiles": {},
   "contextNotes": "",
   "overview": "Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.",
   "goals": [],
   "architectureNotes": "",
   "codingRules": [
     "Follow existing project patterns before introducing new abstractions.",
-    "Keep changes scoped to the active Agent Board task.",
+    "Keep changes scoped to the active Trellis task.",
     "Do not overwrite unrelated user or agent changes."
   ],
   "agentRules": [
@@ -24,6 +26,8 @@
       "compile",
       "package",
       "test",
+      "test:archive",
+      "test:gitignore",
       "test:prd",
       "test:scripts",
       "typecheck",
@@ -48,7 +52,7 @@
       "npm run test",
       "npm run typecheck"
     ],
-    "lastInferred": "2026-07-17T19:52:05.781Z"
+    "lastInferred": "2026-07-18T18:30:49.591Z"
   },
-  "lastUpdated": "2026-07-17T19:52:05.781Z"
+  "lastUpdated": "2026-07-18T18:30:49.591Z"
 }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel, SpecProvider } from './ai';
 import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, signInCodexCli } from './cliAuth';
@@ -526,7 +527,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent]);
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
-  await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath);
+  await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
   vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`);
   await postState();
 }
@@ -545,7 +546,7 @@ async function runStartQaAction(id: string): Promise<void> {
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent]);
   const started = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
-  await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath);
+  await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
   vscode.window.showInformationMessage(`${agentLabel(agent)} started QA for ${id} in a terminal.`);
   await postState();
 }
@@ -592,13 +593,43 @@ async function runAgentBoardScript(workspacePath: string, args: string[]): Promi
   }
 }
 
+// The task JSON can reference a worktree that no longer exists on disk
+// (pruned, removed by a ship, or deleted manually). A terminal launched with
+// a missing cwd fails outright, so restore the worktree from the task branch
+// when possible and fall back to the repository root otherwise.
+async function resolveTerminalCwd(
+  storage: Awaited<ReturnType<typeof getWorkspaceStorage>>,
+  worktreePath: string,
+  branchName: string
+): Promise<string> {
+  const root = storage.root.fsPath;
+  if (!worktreePath) {
+    return root;
+  }
+  if (existsSync(worktreePath)) {
+    return worktreePath;
+  }
+  if (branchName) {
+    try {
+      await execFileAsync('git', ['worktree', 'add', worktreePath, branchName], { cwd: root, timeout: 60000 });
+      vscode.window.showInformationMessage(`Trellis restored the missing worktree for ${branchName}.`);
+      return worktreePath;
+    } catch {
+      // fall through to the repository root
+    }
+  }
+  vscode.window.showWarningMessage('The task worktree was missing and could not be restored; the agent terminal opened in the repository root.');
+  return root;
+}
+
 async function launchAgentTerminal(
   storage: Awaited<ReturnType<typeof getWorkspaceStorage>>,
   taskId: string,
   kind: AgentKind,
   agent: Exclude<AssignedAgent, 'unassigned'>,
   prompt: string,
-  worktreePath: string
+  worktreePath: string,
+  branchName: string
 ): Promise<void> {
   const promptUri = vscode.Uri.joinPath(storage.boardDir, 'prompts', `${taskId}-${kind}.md`);
   await vscode.workspace.fs.writeFile(promptUri, new TextEncoder().encode(prompt));
@@ -612,7 +643,7 @@ async function launchAgentTerminal(
 
   const terminal = vscode.window.createTerminal({
     name: `Trellis: ${taskId} ${kind} (${agentLabel(agent)})`,
-    cwd: worktreePath || storage.root.fsPath
+    cwd: await resolveTerminalCwd(storage, worktreePath, branchName)
   });
   agentTerminals.set(taskId, { terminal, kind });
   terminal.show();
@@ -818,7 +849,7 @@ async function startFailedQaRepairs(): Promise<void> {
         expectedLastUpdated: task.lastUpdated
       });
       const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
-      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath);
+      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
       vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

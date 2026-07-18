@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, LoaderPinwheelIcon, PlusCircleIcon, PriorityIcon, TrellisLogo } from './icons';
 
-type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done';
+type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done' | 'merged';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 type Priority = 'high' | 'medium' | 'low';
 type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
@@ -131,6 +132,18 @@ function readCollapsedLanes(): Record<string, boolean> {
   return saved && typeof saved === 'object' ? (saved as Record<string, boolean>) : {};
 }
 
+const statusLabels: Record<TaskStatus, string> = {
+  backlog: 'Backlog',
+  'ready-for-agent': 'Ready for Agent',
+  building: 'Building',
+  'ready-for-qa': 'Ready for QA',
+  'qa-running': 'QA Running',
+  'failed-qa': 'Failed QA',
+  'human-review': 'Human Review',
+  done: 'Done',
+  merged: 'Merged'
+};
+
 const statusHints: Record<TaskStatus, string> = {
   backlog: 'Idea intake',
   'ready-for-agent': 'Claimable work',
@@ -139,7 +152,8 @@ const statusHints: Record<TaskStatus, string> = {
   'qa-running': 'QA agent active',
   'failed-qa': 'Needs repair',
   'human-review': 'Needs judgment',
-  done: 'Closed loop'
+  done: 'Closed loop',
+  merged: 'Shipped code'
 };
 
 function App(): JSX.Element {
@@ -149,8 +163,8 @@ function App(): JSX.Element {
   const [projectDraft, setProjectDraft] = useState<ProjectContext | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [projectFieldsOpen, setProjectFieldsOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>(readCollapsedLanes);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
@@ -167,7 +181,9 @@ function App(): JSX.Element {
   const [intakeSubmitting, setIntakeSubmitting] = useState(false);
   const [generatingIds, setGeneratingIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
+  const [prdOpen, setPrdOpen] = useState(true);
+  const [acOpen, setAcOpen] = useState(true);
+  const [detailTab, setDetailTab] = useState<'comments' | 'activity'>('comments');
   const dirtyRef = useRef(false);
   const draftRef = useRef<Task | null>(null);
   const saveTimerRef = useRef<number | undefined>(undefined);
@@ -289,6 +305,19 @@ function App(): JSX.Element {
     }
   }, []);
 
+  useEffect(() => {
+    if (!deleteModalOpen) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setDeleteModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteModalOpen]);
+
   const flushPendingSave = () => {
     if (saveTimerRef.current !== undefined) {
       window.clearTimeout(saveTimerRef.current);
@@ -305,9 +334,12 @@ function App(): JSX.Element {
     flushPendingSave();
     setDraft(selected ? cloneTask(selected) : null);
     lastKnownUpdatedRef.current = selected?.lastUpdated;
-    setConfirmDelete(false);
+    setDeleteModalOpen(false);
+    setMenuOpen(false);
     setDetailsOpen(false);
-    setActivityOpen(false);
+    setPrdOpen(true);
+    setAcOpen(true);
+    setDetailTab('comments');
     if (selectedId) {
       setComposerOpen(false);
     }
@@ -431,8 +463,11 @@ function App(): JSX.Element {
 
   return (
     <main className="shell">
+      {!draft && !projectDraft && (
+      <>
       <header className="topbar">
-        <div>
+        <div className="topbarLeft">
+          <TrellisLogo />
           <h1>Trellis</h1>
         </div>
         {generatingIds.length > 0 && (
@@ -440,7 +475,29 @@ function App(): JSX.Element {
         )}
         <div className="telemetry">
           <div className="menuWrap">
-            <button className="ghost moreButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>⋯</button>
+            <button className="iconButton" aria-label="New task" title="New task" onClick={() => setAddMenuOpen((open) => !open)}>
+              <PlusCircleIcon />
+            </button>
+            {addMenuOpen && (
+              <>
+                <div className="menuOverlay" onClick={() => setAddMenuOpen(false)} />
+                <div className="menu" role="menu">
+                  <button role="menuitem" onClick={() => {
+                    setAddMenuOpen(false);
+                    setIntakeOpen(true);
+                  }}>New task from source</button>
+                  <button role="menuitem" onClick={() => {
+                    setAddMenuOpen(false);
+                    vscode.postMessage({ type: 'create-task' });
+                  }}>New blank task</button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="menuWrap">
+            <button className="iconButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>
+              <EllipsisVerticalIcon />
+            </button>
             {menuOpen && (
               <>
                 <div className="menuOverlay" onClick={() => setMenuOpen(false)} />
@@ -469,7 +526,6 @@ function App(): JSX.Element {
               </>
             )}
           </div>
-          <button className="primary" onClick={() => setIntakeOpen(true)}>New task</button>
         </div>
       </header>
 
@@ -510,7 +566,9 @@ function App(): JSX.Element {
                     aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${column.title}`}
                     onClick={() => toggleLane(column.id)}
                   >
-                    <span className={`chevron${collapsed ? ' chevronCollapsed' : ''}`} aria-hidden="true">▾</span>
+                    <span className="chevron" aria-hidden="true">
+                      {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
+                    </span>
                     <h2>{column.title}</h2>
                   </button>
                 ) : (
@@ -519,13 +577,13 @@ function App(): JSX.Element {
                     <p>{statusHints[column.id]}</p>
                   </div>
                 )}
-                <span>{tasks.length}</span>
+                <span className={`laneCount${tasks.length === 0 ? ' laneCountZero' : ''}`}>{tasks.length}</span>
               </div>
               {!collapsed && (
               <div className="cards">
                 {tasks.map((task) => (
                   <button
-                    className={`card priority-${task.priority}`}
+                    className={`card status-${task.status}`}
                     draggable
                     key={task.id}
                     onClick={() => setSelectedId(task.id)}
@@ -535,14 +593,23 @@ function App(): JSX.Element {
                       setDropTarget(null);
                     }}
                   >
-                    <span className="cardMeta">
-                      <strong>{task.id}</strong>
-                      <em>{task.priority}</em>
+                    <span className="cardTop">
+                      <span className="idGroup">
+                        <i className="statusDot" aria-hidden="true" />
+                        <span className="cardId">{task.id}</span>
+                      </span>
+                      <span className={`prioGroup prio-${task.priority}`}>
+                        <PriorityIcon level={task.priority} />
+                        <span>{task.priority}</span>
+                      </span>
                     </span>
                     <span className="cardTitle" title={task.title || 'Untitled task'}>{task.title || 'Untitled task'}</span>
-                    <span className="agentLine">
-                      <span>{task.assignedAgent}</span>
-                      <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
+                    <span className="cardBottom">
+                      <span className={`agentChip agent-${task.assignedAgent}`}>{task.assignedAgent}</span>
+                      <span className="cardClaim">
+                        <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
+                        <LoaderPinwheelIcon />
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -660,83 +727,141 @@ function App(): JSX.Element {
           </div>
         </footer>
       )}
+      </>
+      )}
 
       {draft && (
-        <aside className="drawer" aria-label="Task drawer">
-          <div className="drawerHeader">
-            <div>
-              <p className="eyebrow">
-                {draft.id} · {draft.status}
-                {saveState === 'saving' && ' · saving…'}
-                {saveState === 'saved' && ' · saved'}
-                {saveState === 'error' && ' · save failed'}
-              </p>
-              <input className="titleInput" placeholder="Untitled task" title={draft.title || undefined} value={draft.title} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
-            </div>
-            <div className="drawerHeaderActions">
-              <button
-                className="danger dangerSmall"
-                title={confirmDelete ? 'Click again to permanently delete this task.' : undefined}
-                onClick={() => {
-                  // window.confirm is blocked inside VS Code webviews, so confirm in-place.
-                  if (!confirmDelete) {
-                    setConfirmDelete(true);
-                    window.setTimeout(() => setConfirmDelete(false), 4000);
-                    return;
-                  }
-                  vscode.postMessage({ type: 'delete-task', id: draft.id });
-                }}
-              >
-                {confirmDelete ? 'Confirm?' : 'Delete'}
+        <section className="detailPage" aria-label="Task detail">
+          <div className="detailNav">
+            <div className="detailNavLeft">
+              <button className="iconButton" aria-label="Back to board" title="Back to board" onClick={() => setSelectedId(null)}>
+                <ArrowLeftIcon />
               </button>
-              <button className="ghost" onClick={() => setSelectedId(null)}>Close</button>
+              <span className="detailNavId">{draft.id}</span>
+              <span className="saveHint">
+                {saveState === 'saving' && 'saving…'}
+                {saveState === 'saved' && 'saved'}
+                {saveState === 'error' && 'save failed'}
+              </span>
+            </div>
+            <div className="detailNavRight">
+              <div className="menuWrap">
+                <button className="iconButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>
+                  <EllipsisVerticalIcon />
+                </button>
+                {menuOpen && (
+                  <>
+                    <div className="menuOverlay" onClick={() => setMenuOpen(false)} />
+                    <div className="menu" role="menu">
+                      {state?.liveTerminals?.includes(draft.id) && (
+                        <button role="menuitem" onClick={() => {
+                          setMenuOpen(false);
+                          vscode.postMessage({ type: 'show-terminal', id: draft.id });
+                        }}>Show agent terminal</button>
+                      )}
+                      {(draft.status === 'done' || draft.status === 'merged') && (
+                        <button role="menuitem" onClick={() => {
+                          setMenuOpen(false);
+                          vscode.postMessage({ type: 'archive-task', id: draft.id });
+                        }}>Archive task</button>
+                      )}
+                      <button
+                        role="menuitem"
+                        className="menuDanger"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setDeleteModalOpen(true);
+                        }}
+                      >
+                        Delete task
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
+
+          <div className="detailBody">
+          <textarea
+            className="titleInput"
+            placeholder="Untitled task"
+            rows={1}
+            value={draft.title}
+            ref={autoGrow}
+            onChange={(event) => {
+              autoGrow(event.target);
+              updateDraft({ ...draft, title: event.target.value });
+            }}
+          />
 
           <div className="props">
             <label className="propRow">
               <span>Status</span>
-              <select
-                value={draft.status}
-                onChange={(event) => {
-                  const status = event.target.value as TaskStatus;
-                  setDraft({ ...draft, status });
-                  vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: lastKnownUpdatedRef.current });
-                }}
-              >
-                <option value="backlog">backlog</option>
-                <option value="ready-for-agent">ready-for-agent</option>
-                <option value="building">building</option>
-                <option value="ready-for-qa">ready-for-qa</option>
-                <option value="qa-running">qa-running</option>
-                <option value="failed-qa">failed-qa</option>
-                <option value="human-review">human-review</option>
-                <option value="done">done</option>
-              </select>
+              <span className={`propValue status-${draft.status}`}>
+                <span className="propDisplay" aria-hidden="true">
+                  <i className="statusDot" />
+                  <span>{statusLabels[draft.status]}</span>
+                  <span className="propChevron"><ChevronDownIcon /></span>
+                </span>
+                <select
+                  className="propSelect"
+                  aria-label="Status"
+                  value={draft.status}
+                  onChange={(event) => {
+                    const status = event.target.value as TaskStatus;
+                    setDraft({ ...draft, status });
+                    vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: lastKnownUpdatedRef.current });
+                  }}
+                >
+                  {(Object.keys(statusLabels) as TaskStatus[]).map((status) => (
+                    <option key={status} value={status}>{statusLabels[status]}</option>
+                  ))}
+                </select>
+              </span>
             </label>
             <label className="propRow">
               <span>Priority</span>
-              <select value={draft.priority} onChange={(event) => saveDraftNow({ ...draft, priority: event.target.value as Priority })}>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
-              </select>
+              <span className="propValue">
+                <span className={`propDisplay prio-${draft.priority}`} aria-hidden="true">
+                  <PriorityIcon level={draft.priority} />
+                  <span>{draft.priority[0].toUpperCase() + draft.priority.slice(1)}</span>
+                  <span className="propChevron"><ChevronDownIcon /></span>
+                </span>
+                <select className="propSelect" aria-label="Priority" value={draft.priority} onChange={(event) => saveDraftNow({ ...draft, priority: event.target.value as Priority })}>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </span>
             </label>
             <label className="propRow">
               <span>Agent</span>
-              <select value={draft.assignedAgent} onChange={(event) => saveDraftNow({ ...draft, assignedAgent: event.target.value as AssignedAgent })}>
-                <option value="unassigned">unassigned</option>
-                <option value="claude">claude</option>
-                <option value="codex">codex</option>
-              </select>
+              <span className="propValue">
+                <span className="propDisplay" aria-hidden="true">
+                  <span>{draft.assignedAgent}</span>
+                  <span className="propChevron"><ChevronDownIcon /></span>
+                </span>
+                <select className="propSelect" aria-label="Agent" value={draft.assignedAgent} onChange={(event) => saveDraftNow({ ...draft, assignedAgent: event.target.value as AssignedAgent })}>
+                  <option value="unassigned">unassigned</option>
+                  <option value="claude">claude</option>
+                  <option value="codex">codex</option>
+                </select>
+              </span>
             </label>
             <label className="propRow">
               <span>QA</span>
-              <select value={draft.qaAgent} onChange={(event) => saveDraftNow({ ...draft, qaAgent: event.target.value as AssignedAgent })}>
-                <option value="unassigned">unassigned</option>
-                <option value="claude">claude</option>
-                <option value="codex">codex</option>
-              </select>
+              <span className="propValue">
+                <span className="propDisplay" aria-hidden="true">
+                  <span>{draft.qaAgent}</span>
+                  <span className="propChevron"><ChevronDownIcon /></span>
+                </span>
+                <select className="propSelect" aria-label="QA agent" value={draft.qaAgent} onChange={(event) => saveDraftNow({ ...draft, qaAgent: event.target.value as AssignedAgent })}>
+                  <option value="unassigned">unassigned</option>
+                  <option value="claude">claude</option>
+                  <option value="codex">codex</option>
+                </select>
+              </span>
             </label>
           </div>
 
@@ -776,156 +901,159 @@ function App(): JSX.Element {
             {state?.liveTerminals?.includes(draft.id) && (
               <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
             )}
-            {(draft.comments ?? []).length > 0 && (
-              <section className="commentHistory" aria-label="Agent comments">
-                <div className="commentHistoryHeader">Comments <span>{draft.comments!.length}</span></div>
-                {draft.comments!.slice().reverse().map((comment) => (
-                  <article className="commentItem" key={comment.id}>
-                    <div><strong>{comment.author}</strong><span>{comment.phase.replace('-', ' ')}</span><time>{formatTimelineTime(comment.createdAt)}</time></div>
-                    <p>{comment.message}</p>
-                  </article>
-                ))}
-              </section>
-            )}
-            {(draft.status === 'human-review' || draft.status === 'failed-qa') && (
-              <section className="reviewPanel" aria-label="Comment and send to agent">
-                <div>
-                  <span className="reviewLabel">Comment to agent</span>
-                  <p>Add the missing context or requested change. It stays with the task and the build agent starts immediately.</p>
-                </div>
-                <textarea
-                  value={reviewFeedback}
-                  onChange={(event) => setReviewFeedback(event.target.value)}
-                  placeholder="For example: Keep the inferred context editable after saving, and preserve my existing architecture notes."
-                  rows={4}
-                />
-                <button
-                  className="danger reviewSubmit"
-                  disabled={!reviewFeedback.trim() || reviewSubmitting || draft.assignedAgent === 'unassigned'}
-                  title={draft.assignedAgent === 'unassigned' ? 'Assign a build agent before requesting changes.' : undefined}
-                  onClick={() => {
-                    setReviewSubmitting(true);
-                    vscode.postMessage({
-                      type: 'request-changes',
-                      id: draft.id,
-                      feedback: reviewFeedback,
-                      expectedLastUpdated: lastKnownUpdatedRef.current
-                    });
-                  }}
-                >
-                  {reviewSubmitting ? 'Sending…' : 'Comment & send to Building'}
-                </button>
-              </section>
-            )}
             {draft.status === 'human-review' && (
               <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
             )}
             {draft.status === 'human-review' && (
               <Action label="Mark done" onClick={() => sendAction(draft, 'mark-done')} />
             )}
-            {draft.status === 'done' && (
-              <Action label="Archive task" onClick={() => vscode.postMessage({ type: 'archive-task', id: draft.id })} />
-            )}
           </div>
-
-          {(draft.lastValidation || draft.shipResult) && (
-            <div className="statusPanel">
-              {draft.lastValidation && (
-                <p className={draft.lastValidation.passed ? 'statusOk' : 'statusBad'}>
-                  Validation {draft.lastValidation.passed ? 'passed' : 'failed'} · {draft.lastValidation.results.length} command(s) · {new Date(draft.lastValidation.ranAt).toLocaleString()}
-                </p>
-              )}
-              {draft.shipResult && (
-                <p className="statusOk">
-                  {draft.shipResult.mode === 'pr' ? (
-                    <>Pull request: <a href={draft.shipResult.prUrl}>{draft.shipResult.prUrl}</a></>
-                  ) : (
-                    <>Merged into {draft.shipResult.mergedInto} ({(draft.shipResult.mergeCommit ?? '').slice(0, 8)})</>
-                  )}
-                </p>
-              )}
-            </div>
-          )}
 
           {generatingIds.includes(draft.id) && (
             <p className="draftingNote">Drafting title, PRD, and checklists from the brief…</p>
           )}
 
           <div className="fields">
-            <Field label="PRD Description" value={draft.description} onChange={(value) => updateDraft({ ...draft, description: value })} />
-            <ListField label="Acceptance Criteria" value={draft.acceptanceCriteria} onChange={(value) => updateDraft({ ...draft, acceptanceCriteria: splitLines(value) })} />
+            <section className="fieldSection">
+              <button className="fieldToggle" aria-expanded={prdOpen} onClick={() => setPrdOpen((open) => !open)}>
+                <span className="chevron" aria-hidden="true">{prdOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+                PRD Description
+              </button>
+              {prdOpen && (
+                <textarea
+                  value={draft.description}
+                  ref={autoGrow}
+                  onChange={(event) => {
+                    autoGrow(event.target);
+                    updateDraft({ ...draft, description: event.target.value });
+                  }}
+                />
+              )}
+            </section>
+            <section className="fieldSection">
+              <button className="fieldToggle" aria-expanded={acOpen} onClick={() => setAcOpen((open) => !open)}>
+                <span className="chevron" aria-hidden="true">{acOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
+                Acceptance Criteria
+              </button>
+              {acOpen && (
+                <textarea
+                  value={(draft.acceptanceCriteria ?? []).join('\n')}
+                  ref={autoGrow}
+                  onChange={(event) => {
+                    autoGrow(event.target);
+                    updateDraft({ ...draft, acceptanceCriteria: splitLines(event.target.value) });
+                  }}
+                />
+              )}
+            </section>
           </div>
 
           <button className="sectionToggle" onClick={() => setDetailsOpen((open) => !open)}>
-            {detailsOpen ? '▾' : '▸'} Details
+            <span className="chevron" aria-hidden="true">
+              {detailsOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
+            </span>
+            Other details
           </button>
-          {detailsOpen && (hasTaskDetails(draft) ? (
+          {detailsOpen && (
             <div className="detailSections">
-              <DetailList label="QA Checklist" items={draft.qaChecklist} />
-              <DetailList label="Design QA Checklist" items={draft.designQaChecklist} />
-              <DetailList label="Validation Commands" items={draft.validationCommands} />
-              <DetailList label="Relevant Files" items={draft.relevantFiles} />
-              <DetailList label="Constraints" items={draft.constraints} />
-              <DetailText label="Agent Notes" text={draft.agentNotes} />
-              <DetailList label="QA Evidence" items={draft.qaEvidence} />
-              <DetailText label="Branch" text={draft.branchName} />
+              {(draft.lastValidation || draft.shipResult) && (
+                <div className="statusPanel">
+                  {draft.lastValidation && (() => {
+                    const total = draft.lastValidation.results.length;
+                    const failed = draft.lastValidation.results.filter((result) => result.exitCode !== 0).length;
+                    const noun = total === 1 ? 'check' : 'checks';
+                    return (
+                      <p className={draft.lastValidation.passed ? 'statusOk' : 'statusBad'}>
+                        {draft.lastValidation.passed
+                          ? `All ${total} validation ${noun} passed before QA`
+                          : `${failed} of ${total} validation ${noun} failed`}
+                        {' · '}{formatTimelineTime(draft.lastValidation.ranAt)}
+                      </p>
+                    );
+                  })()}
+                  {draft.shipResult && (
+                    <p className="statusOk">
+                      {draft.shipResult.mode === 'pr' ? (
+                        <>Pull request: <a href={draft.shipResult.prUrl}>{draft.shipResult.prUrl}</a></>
+                      ) : (
+                        <>Merged into {draft.shipResult.mergedInto} ({(draft.shipResult.mergeCommit ?? '').slice(0, 8)})</>
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+              {hasTaskDetails(draft) ? (
+                <>
+                  <DetailList label="QA Checklist" items={draft.qaChecklist} />
+                  <DetailList label="Design QA Checklist" items={draft.designQaChecklist} />
+                  <DetailList label="Validation Commands" items={draft.validationCommands} />
+                  <DetailList label="Relevant Files" items={draft.relevantFiles} />
+                  <DetailList label="Constraints" items={draft.constraints} />
+                  <DetailText label="Agent Notes" text={draft.agentNotes} />
+                  <DetailList label="QA Evidence" items={draft.qaEvidence} />
+                  <DetailText label="Branch" text={draft.branchName} />
+                </>
+              ) : (
+                !draft.lastValidation && !draft.shipResult && (
+                  <p className="detailEmpty">Checklists, files, and notes filled in by agents will appear here.</p>
+                )
+              )}
             </div>
-          ) : (
-            <p className="detailEmpty">Checklists, files, and notes filled in by agents will appear here.</p>
-          ))}
+          )}
 
-          <Timeline
-            open={activityOpen}
-            onToggle={() => setActivityOpen((open) => !open)}
-            entries={[...(draft.activityLog ?? []), ...(draft.qaNotes ?? [])]}
+          <ThreadSection
+            comments={draft.comments ?? []}
+            activity={[...(draft.activityLog ?? []), ...(draft.qaNotes ?? [])]}
+            tab={detailTab}
+            onTab={setDetailTab}
+            canComment={draft.status === 'human-review' || draft.status === 'failed-qa'}
+            agentAssigned={draft.assignedAgent !== 'unassigned'}
+            note={reviewFeedback}
+            onNote={setReviewFeedback}
+            submitting={reviewSubmitting}
+            onSend={() => {
+              setReviewSubmitting(true);
+              vscode.postMessage({
+                type: 'request-changes',
+                id: draft.id,
+                feedback: reviewFeedback,
+                expectedLastUpdated: lastKnownUpdatedRef.current
+              });
+            }}
           />
-        </aside>
+          </div>
+          {deleteModalOpen && (
+            <div className="modalOverlay" onClick={() => setDeleteModalOpen(false)}>
+              <div className="modal" role="alertdialog" aria-modal="true" aria-label={`Delete ${draft.id}`} onClick={(event) => event.stopPropagation()}>
+                <h3>Delete {draft.id}?</h3>
+                <p>This permanently removes the task and its worktree. It cannot be undone.</p>
+                <div className="modalActions">
+                  <button className="ghost" onClick={() => setDeleteModalOpen(false)}>Cancel</button>
+                  <button className="danger" autoFocus onClick={() => vscode.postMessage({ type: 'delete-task', id: draft.id })}>Delete task</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
-      {projectDraft && (
-        <aside className="drawer projectDrawer" aria-label="Project context drawer">
-          <div className="drawerHeader">
-            <div>
-              <p className="eyebrow">Shared agent context</p>
-              <h2 className="drawerTitle">Project Context</h2>
+      {projectDraft && !draft && (
+        <section className="detailPage" aria-label="Project context">
+          <div className="detailNav">
+            <div className="detailNavLeft">
+              <button className="iconButton" aria-label="Back to board" title="Back to board" onClick={closeProject}>
+                <ArrowLeftIcon />
+              </button>
+              <span className="navTitle">Project Context</span>
             </div>
-            <button className="ghost" onClick={() => {
-              closeProject();
-            }}>Skip for now</button>
+            <div className="detailNavRight">
+              <button className="ghost" onClick={closeProject}>Skip for now</button>
+            </div>
           </div>
 
+          <div className="detailBody">
           <div className="contextIntro">
-            <span className="contextOptional">Optional</span>
             <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
-          </div>
-
-          <fieldset className="contextModeGroup">
-            <legend>Context mode</legend>
-            <div className="contextModeOptions">
-              {(['lean', 'standard', 'full'] as const).map((mode) => (
-                <label className={(projectDraft.contextMode ?? 'standard') === mode ? 'selected' : ''} key={mode}>
-                  <input
-                    type="radio"
-                    name="context-mode"
-                    value={mode}
-                    checked={(projectDraft.contextMode ?? 'standard') === mode}
-                    onChange={() => updateProject({ ...projectDraft, contextMode: mode })}
-                  />
-                  <span>{mode[0].toUpperCase() + mode.slice(1)}</span>
-                </label>
-              ))}
-            </div>
-            <p className="contextBudget">≈ {estimateContextTokens(projectDraft).toLocaleString()} prompt tokens · estimate updates as you type</p>
-          </fieldset>
-
-          <div className="contextBlock">
-            <Field
-              label="Project context"
-              big
-              placeholder="Paste anything agents should know before building: product overview, architecture notes, conventions, constraints, links. This goes to PRD generation and is stored in .agent-board/project.json for agents."
-              value={projectDraft.contextNotes ?? ''}
-              onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
-            />
           </div>
 
           <div className="contextActions">
@@ -934,7 +1062,6 @@ function App(): JSX.Element {
               disabled={projectSaveState === 'saving'}
               onClick={() => {
                 setProjectSaveState('saving');
-                setProjectFieldsOpen(true);
                 vscode.postMessage({ type: 'infer-project' });
               }}
             >
@@ -949,39 +1076,35 @@ function App(): JSX.Element {
           </div>
 
           <div className="contextBlock">
-            <ListField label="Validation commands (used by QA runs, one per line)" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
+            <Field
+              label="Project context"
+              placeholder="Product overview, architecture, conventions, constraints, links…"
+              value={projectDraft.contextNotes ?? ''}
+              onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
+            />
+            <p className="fieldHint">Shared with agents during PRD generation. Stored in .agent-board/project.json.</p>
           </div>
 
-          <button className="sectionToggle" onClick={() => setProjectFieldsOpen((open) => !open)}>
-            {projectFieldsOpen ? '▾' : '▸'} Structured fields (optional)
-          </button>
-          {projectFieldsOpen && (
-            <div className="formGrid">
-              <Field label="Project overview" value={projectDraft.overview} onChange={(value) => updateProject({ ...projectDraft, overview: value })} />
-              <ListField label="Project goals" value={projectDraft.goals} onChange={(value) => updateProject({ ...projectDraft, goals: splitLines(value) })} />
-              <Field label="Architecture notes" value={projectDraft.architectureNotes} onChange={(value) => updateProject({ ...projectDraft, architectureNotes: value })} />
-              <ListField label="Coding rules" value={projectDraft.codingRules} onChange={(value) => updateProject({ ...projectDraft, codingRules: splitLines(value) })} />
-              <ListField label="Agent rules" value={projectDraft.agentRules} onChange={(value) => updateProject({ ...projectDraft, agentRules: splitLines(value) })} />
-              <ListField label="Design rules" value={projectDraft.designRules} onChange={(value) => updateProject({ ...projectDraft, designRules: splitLines(value) })} />
-              <ListField label="Glossary" value={projectDraft.glossary} onChange={(value) => updateProject({ ...projectDraft, glossary: splitLines(value) })} />
-              <Field label="Frontend routing card" placeholder="UI architecture, component conventions, and key frontend paths." value={projectDraft.contextProfiles?.frontend ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, frontend: value } })} />
-              <Field label="Backend routing card" placeholder="Service boundaries, persistence conventions, and key backend paths." value={projectDraft.contextProfiles?.backend ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, backend: value } })} />
-              <Field label="Infrastructure routing card" placeholder="Deployment, CI, environments, and key infrastructure paths." value={projectDraft.contextProfiles?.infrastructure ?? ''} onChange={(value) => updateProject({ ...projectDraft, contextProfiles: { ...projectDraft.contextProfiles, infrastructure: value } })} />
-            </div>
-          )}
+          <div className="contextBlock">
+            <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
+            <p className="fieldHint">Used by QA runs, one per line.</p>
+          </div>
 
-          <section className="inferencePanel">
-            <h3>Inference</h3>
-            <InfoLine label="Package manager" value={projectDraft.inference.packageManager || 'unknown'} />
-            <InfoLine label="Likely stack" value={projectDraft.inference.likelyStack.join(', ') || 'none yet'} />
-            <InfoLine label="Scripts" value={projectDraft.inference.scripts.join(', ') || 'none detected'} />
-            <InfoLine label="Detected files" value={projectDraft.inference.detectedFiles.join(', ') || 'none detected'} />
-            <InfoLine label="Suggested validation" value={projectDraft.inference.suggestedValidation.join(', ') || 'none detected'} />
-          </section>
-        </aside>
+          </div>
+        </section>
       )}
     </main>
   );
+}
+
+// Sizes a textarea to its content so the detail title wraps like the design
+// instead of truncating; used as both ref callback and onChange helper.
+function autoGrow(el: HTMLTextAreaElement | null): void {
+  if (!el) {
+    return;
+  }
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
 }
 
 function Action({ label, onClick, primary = false, disabled = false, title }: { label: string; onClick: () => void; primary?: boolean; disabled?: boolean; title?: string }): JSX.Element {
@@ -989,15 +1112,30 @@ function Action({ label, onClick, primary = false, disabled = false, title }: { 
 }
 
 function Field({ label, value, onChange, placeholder, big = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; big?: boolean }): JSX.Element {
-  return <label><span>{label}</span><textarea className={big ? 'bigInput' : undefined} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Re-fit on external value changes too (e.g. "Infer from repo" seeding notes).
+  useEffect(() => {
+    autoGrow(areaRef.current);
+  }, [value]);
+  return (
+    <label>
+      <span>{label}</span>
+      <textarea
+        className={big ? 'bigInput' : undefined}
+        placeholder={placeholder}
+        value={value}
+        ref={areaRef}
+        onChange={(event) => {
+          autoGrow(event.target);
+          onChange(event.target.value);
+        }}
+      />
+    </label>
+  );
 }
 
 function ListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string) => void }): JSX.Element {
   return <Field label={label} value={(value ?? []).join('\n')} onChange={onChange} />;
-}
-
-function InfoLine({ label, value }: { label: string; value: string }): JSX.Element {
-  return <p><strong>{label}</strong><span>{value}</span></p>;
 }
 
 function hasTaskDetails(task: Task): boolean {
@@ -1039,6 +1177,29 @@ function DetailText({ label, text }: { label: string; text: string }): JSX.Eleme
   );
 }
 
+// Relative times like the design ("45m ago", "2h ago"); falls back to a
+// short date once entries are older than a week.
+function timeAgo(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return timestamp;
+  }
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) {
+    return 'just now';
+  }
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ago`;
+  }
+  if (seconds < 86400) {
+    return `${Math.floor(seconds / 3600)}h ago`;
+  }
+  if (seconds < 604800) {
+    return `${Math.floor(seconds / 86400)}d ago`;
+  }
+  return formatTimelineTime(timestamp);
+}
+
 function formatTimelineTime(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) {
@@ -1047,23 +1208,99 @@ function formatTimelineTime(timestamp: string): string {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function Timeline({ entries, open, onToggle }: { entries: ActivityEntry[]; open: boolean; onToggle: () => void }): JSX.Element | null {
-  if (!entries.length) {
-    return null;
-  }
-  const sorted = entries.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+function ThreadSection({
+  comments,
+  activity,
+  tab,
+  onTab,
+  canComment,
+  agentAssigned,
+  note,
+  onNote,
+  submitting,
+  onSend
+}: {
+  comments: TaskComment[];
+  activity: ActivityEntry[];
+  tab: 'comments' | 'activity';
+  onTab: (tab: 'comments' | 'activity') => void;
+  canComment: boolean;
+  agentAssigned: boolean;
+  note: string;
+  onNote: (value: string) => void;
+  submitting: boolean;
+  onSend: () => void;
+}): JSX.Element {
+  const sortedActivity = activity.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const ordered = comments.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const sendDisabled = !note.trim() || submitting || !agentAssigned;
   return (
-    <section className="timeline">
-      <button className="sectionToggle" onClick={onToggle}>
-        {open ? '▾' : '▸'} Activity <span className="sectionCount">{sorted.length}</span>
-      </button>
-      {open && sorted.map((entry, index) => (
-        <div className="timelineRow" key={`${entry.timestamp}-${index}`}>
-          <time>{formatTimelineTime(entry.timestamp)}</time>
-          <span className="timelineActor">{entry.actor}</span>
-          <span className="timelineMessage">{entry.message}</span>
+    <section className="threadSection" aria-label="Comments and activity">
+      <div className="tabBar" role="tablist">
+        <button role="tab" aria-selected={tab === 'comments'} className={`tab${tab === 'comments' ? ' tabActive' : ''}`} onClick={() => onTab('comments')}>
+          Comments ({comments.length})
+        </button>
+        <button role="tab" aria-selected={tab === 'activity'} className={`tab${tab === 'activity' ? ' tabActive' : ''}`} onClick={() => onTab('activity')}>
+          Activity
+        </button>
+      </div>
+      {tab === 'comments' ? (
+        <div className="commentThread">
+          {ordered.length === 0 && <p className="threadEmpty">No comments yet.</p>}
+          {ordered.map((comment) => {
+            const isAgent = comment.author === 'claude' || comment.author === 'codex';
+            return (
+              <article className="messageNote" key={comment.id}>
+                <span className="messageIcon">{isAgent ? <AtSignIcon /> : <BookmarkIcon />}</span>
+                <div className="messageContent">
+                  <p>{isAgent && <><strong className="mention">@{comment.author}</strong>{' '}</>}{comment.message}</p>
+                  <time>{timeAgo(comment.createdAt)}</time>
+                </div>
+              </article>
+            );
+          })}
+          {canComment && (
+            <div className="inlineCommentInput">
+              <div className="inputRow">
+                <textarea
+                  className="noteInput"
+                  rows={1}
+                  value={note}
+                  onChange={(event) => onNote(event.target.value)}
+                  placeholder="Write a note…"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey && !sendDisabled) {
+                      event.preventDefault();
+                      onSend();
+                    }
+                  }}
+                />
+                <button
+                  className="sendBtn"
+                  aria-label="Comment and send to Building"
+                  disabled={sendDisabled}
+                  title={!agentAssigned ? 'Assign a build agent before requesting changes.' : 'Sends the note to the build agent and returns the task to Building.'}
+                  onClick={onSend}
+                >
+                  <ArrowUpIcon />
+                </button>
+              </div>
+              {submitting && <p className="threadCaption">Sending…</p>}
+            </div>
+          )}
         </div>
-      ))}
+      ) : (
+        <div className="activityThread">
+          {sortedActivity.length === 0 && <p className="threadEmpty">No activity yet.</p>}
+          {sortedActivity.map((entry, index) => (
+            <div className="timelineRow" key={`${entry.timestamp}-${index}`}>
+              <time>{timeAgo(entry.timestamp)}</time>
+              <span className="timelineActor">{entry.actor}</span>
+              <span className="timelineMessage">{entry.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1078,28 +1315,6 @@ function cloneTask(task: Task): Task {
 
 function cloneProject(project: ProjectContext): ProjectContext {
   return JSON.parse(JSON.stringify(project)) as ProjectContext;
-}
-
-function estimateContextTokens(project: ProjectContext): number {
-  const mode = project.contextMode ?? 'standard';
-  const lean = {
-    codingRules: project.codingRules,
-    agentRules: project.agentRules,
-    validationCommands: project.validationCommands,
-    designRules: project.designRules,
-    relevantFiles: project.inference?.detectedFiles,
-    contextProfiles: project.contextProfiles
-  };
-  const selected = mode === 'lean' ? lean : {
-    ...lean,
-    contextNotes: project.contextNotes,
-    overview: project.overview,
-    goals: project.goals,
-    architectureNotes: project.architectureNotes,
-    glossary: project.glossary,
-    inference: project.inference
-  };
-  return Math.max(1, Math.ceil(JSON.stringify(selected).length / 4));
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

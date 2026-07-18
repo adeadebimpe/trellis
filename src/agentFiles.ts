@@ -6,7 +6,8 @@ export const columns = [
   { id: 'qa-running', title: 'QA Running' },
   { id: 'failed-qa', title: 'Failed QA' },
   { id: 'human-review', title: 'Human Review' },
-  { id: 'done', title: 'Done' }
+  { id: 'done', title: 'Done' },
+  { id: 'merged', title: 'Merged' }
 ] as const;
 
 export function agentsMarkdown(): string {

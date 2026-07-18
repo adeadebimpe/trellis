@@ -1,34 +1,65 @@
+/* Trellis design language — implemented from the Figma designs
+   (trellis-board-*, trellis-task-detail, trellis-project-context).
+   Dark palette is the default; body.vscode-light swaps in the light variants. */
+
 :root {
-  --bg: var(--vscode-editor-background, #08090a);
-  --panel: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #0f1011));
-  --panel-2: var(--vscode-list-hoverBackground, #161719);
-  --line: var(--vscode-contrastBorder, var(--vscode-panel-border, #1f2023));
-  --line-strong: var(--vscode-contrastActiveBorder, var(--vscode-widget-border, #2a2b2f));
-  --text: var(--vscode-foreground, #e6e6e7);
-  --muted: var(--vscode-descriptionForeground, #8a8f98);
-  --subtle: var(--vscode-disabledForeground, var(--vscode-descriptionForeground, #62666d));
-  --accent: var(--vscode-focusBorder, #5e6ad2);
-  --accent-soft: var(--vscode-list-activeSelectionBackground, rgba(94, 106, 210, 0.12));
-  --green: var(--vscode-charts-green, #4cb782);
-  --amber: var(--vscode-charts-orange, #f2994a);
-  --red: var(--vscode-errorForeground, #eb5757);
-  --blue: var(--vscode-textLink-foreground, #5e9eff);
-  --button-bg: var(--vscode-button-background, #5e6ad2);
-  --button-fg: var(--vscode-button-foreground, #ffffff);
-  --button-hover: var(--vscode-button-hoverBackground, #4d59c4);
-  --secondary-button-bg: var(--vscode-button-secondaryBackground, #161719);
-  --secondary-button-fg: var(--vscode-button-secondaryForeground, #e6e6e7);
-  --secondary-button-hover: var(--vscode-button-secondaryHoverBackground, #2a2b2f);
-  --input-bg: var(--vscode-input-background, #0f1011);
-  --input-border: var(--vscode-input-border, #1f2023);
-  --input-fg: var(--vscode-input-foreground, #e6e6e7);
-  --input-placeholder: var(--vscode-input-placeholderForeground, #62666d);
-  --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.45));
-  --font: var(--vscode-font-family, sans-serif);
-  --font-size: var(--vscode-font-size, 13px);
-  --mono-font: var(--vscode-editor-font-family, monospace);
+  --bg: #0e0e0e;
+  --surface: #141414;
+  --card: #1a1a1a;
+  --card-stroke: #3f3f46;
+  --badge-bg: #1c1c1f;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --text: #ffffff;
+  --body-text: #bfbfbf;
+  --muted: #a1a1aa;
+  --subtle: #6b6b75;
+  --green: #10b981;
+  --amber: #f2994a;
+  --red: #eb5757;
+  --blue: #5e9eff;
+  --purple: #b085f5;
+  --agent-chip-bg: #2a1f14;
+  --agent-chip-text: #d4956a;
+  --codex-chip-bg: #10231d;
+  --codex-chip-text: #4db6a0;
+  --accent: #5e9eff;
+  --accent-soft: rgba(94, 158, 255, 0.12);
+  --ink-btn-bg: #ffffff;
+  --ink-btn-fg: #0a0a0a;
+  --input-bg: #1a1a1a;
+  --input-border: rgba(255, 255, 255, 0.08);
+  --input-placeholder: #6b6b75;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono-font: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --radius: 6px;
   --radius-sm: 4px;
+}
+
+body.vscode-light {
+  --bg: #fafafa;
+  --surface: #f5f5f5;
+  --card: #ffffff;
+  --card-stroke: rgba(0, 0, 0, 0.16);
+  --badge-bg: #ededee;
+  --line: rgba(0, 0, 0, 0.1);
+  --line-strong: rgba(0, 0, 0, 0.2);
+  --text: #111111;
+  --body-text: #3d3d3d;
+  --muted: #59595e;
+  --subtle: #8a8a90;
+  --agent-chip-bg: #f5eee4;
+  --agent-chip-text: #b87333;
+  --codex-chip-bg: #e3f2ec;
+  --codex-chip-text: #0f8a6d;
+  --accent-soft: rgba(94, 158, 255, 0.16);
+  --ink-btn-bg: #141414;
+  --ink-btn-fg: #ffffff;
+  --input-bg: #ffffff;
+  --input-border: rgba(0, 0, 0, 0.12);
+  --input-placeholder: #8a8a90;
+  --shadow: rgba(0, 0, 0, 0.15);
 }
 
 * {
@@ -37,11 +68,13 @@
 
 body {
   margin: 0;
+  /* VS Code injects default webview padding (0 20px); the board is full-bleed. */
+  padding: 0;
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: var(--font-size);
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -70,7 +103,7 @@ select {
 }
 
 .setupPanel {
-  background: var(--panel);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   max-width: 620px;
@@ -78,21 +111,22 @@ select {
 }
 
 .setupPanel .eyebrow {
-  color: var(--accent);
+  color: var(--subtle);
   display: block;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   margin: 0 0 10px;
   text-transform: uppercase;
 }
 
 .setupPanel h1 {
-  font-size: 26px;
+  font-size: 22px;
   margin-bottom: 12px;
 }
 
 .setupPanel p:not(.eyebrow) {
-  color: var(--muted);
+  color: var(--body-text);
   line-height: 1.5;
   margin: 0 0 20px;
 }
@@ -109,48 +143,69 @@ select {
   padding-top: 14px;
 }
 
+/* Header — 48px surface bar: logo tile + wordmark left, icon actions right. */
 .topbar {
   align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 12px 20px;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
-}
-
-.topbar > div:first-child {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 12px;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 14px;
 }
 
-.eyebrow {
-  display: none;
+.topbarLeft {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.logoTile {
+  align-items: center;
+  background: #171819;
+  border-radius: 4px;
+  display: inline-flex;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
 }
 
 h1 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   line-height: 1;
   margin: 0;
-  letter-spacing: -0.01em;
 }
 
 .telemetry {
   align-items: center;
   display: flex;
-  gap: 6px;
+  gap: 4px;
+}
+
+.iconButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.iconButton:hover {
+  background: var(--badge-bg);
+  color: var(--text);
 }
 
 .menuWrap {
   position: relative;
-}
-
-.moreButton {
-  font-size: 14px;
-  line-height: 1;
-  min-width: 30px;
-  padding: 5px 8px;
 }
 
 .menuOverlay {
@@ -160,7 +215,7 @@ h1 {
 }
 
 .menu {
-  background: var(--panel);
+  background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px var(--shadow);
@@ -195,28 +250,35 @@ h1 {
 }
 
 .menu button:hover {
-  background: var(--panel-2);
+  background: var(--badge-bg);
 }
 
+.menu .menuDanger {
+  color: var(--red);
+}
+
+/* Composer — surface bar with a bordered box, hint + primary action. */
 .composerBar {
-  background: var(--bg);
+  background: var(--surface);
   border-top: 1px solid var(--line);
   bottom: 0;
-  padding: 10px 20px 12px;
+  padding: 12px;
   position: sticky;
   z-index: 10;
 }
 
 .composerBox {
-  background: var(--panel);
+  background: var(--card);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
+  gap: 8px;
   margin: 0 auto;
   max-width: 760px;
-  padding: 8px 10px 8px;
+  padding: 10px;
   transition: border-color 0.12s ease;
+  width: 100%;
 }
 
 .composerBox:focus-within {
@@ -227,9 +289,10 @@ h1 {
   background: transparent;
   border: 0;
   color: var(--text);
-  font-size: 13px;
-  min-height: 40px;
-  padding: 2px 2px 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: 38px;
+  padding: 0;
   resize: none;
   width: 100%;
 }
@@ -241,15 +304,15 @@ h1 {
 
 .composerControls {
   align-items: center;
-  border-top: 1px solid var(--line);
   display: flex;
   gap: 12px;
-  padding-top: 8px;
 }
 
 .composerHint {
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--subtle);
+  flex: 1;
+  font-size: 10px;
+  min-width: 0;
 }
 
 .composerSubmit {
@@ -478,7 +541,7 @@ h1 {
   animation: draftingPulse 1.6s ease-in-out infinite;
   color: var(--muted);
   flex: 1;
-  font-size: 12px;
+  font-size: 11px;
   margin: 0;
   min-width: 0;
   overflow: hidden;
@@ -506,12 +569,12 @@ select:focus-visible {
 .danger {
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   color: var(--text);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.1s ease, opacity 0.12s ease;
 }
 
 .primary:active:not(:disabled),
@@ -531,25 +594,27 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+/* Design primary: white-on-ink button (inverted in light theme). */
 .primary {
-  background: var(--button-bg);
-  border-color: var(--button-bg);
-  color: var(--button-fg);
+  background: var(--ink-btn-bg);
+  border-color: var(--ink-btn-bg);
+  color: var(--ink-btn-fg);
   font-weight: 500;
   padding: 6px 12px;
 }
 
 .primary:hover {
-  background: var(--button-hover);
-  border-color: var(--button-hover);
+  opacity: 0.88;
 }
 
 .ghost {
+  color: var(--muted);
   padding: 5px 10px;
 }
 
 .ghost:hover {
-  background: var(--panel-2);
+  background: var(--badge-bg);
+  color: var(--text);
 }
 
 .danger {
@@ -569,11 +634,12 @@ select:focus-visible {
   display: none;
 }
 
+/* Board — panel host: kanban columns. Sidebar host overrides below. */
 .board {
   display: grid;
   gap: 1px;
   background: var(--line);
-  grid-template-columns: repeat(7, minmax(260px, 1fr));
+  grid-template-columns: repeat(8, minmax(260px, 1fr));
   flex: 1;
   overflow-x: auto;
   padding: 0;
@@ -605,11 +671,11 @@ select:focus-visible {
 }
 
 .laneHeader h2 {
-  font-size: 12px;
+  color: var(--text);
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0;
   margin: 0;
-  color: var(--text);
 }
 
 .laneHeader p {
@@ -624,7 +690,7 @@ select:focus-visible {
   cursor: pointer;
   display: flex;
   flex: 1;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   padding: 0;
   text-align: left;
@@ -642,38 +708,41 @@ select:focus-visible {
 }
 
 .chevron {
+  align-items: center;
   color: var(--subtle);
-  display: inline-block;
+  display: inline-flex;
   flex-shrink: 0;
-  font-size: 10px;
-  transition: transform 0.12s ease;
+  height: 12px;
+  width: 12px;
 }
 
-.chevronCollapsed {
-  transform: rotate(-90deg);
+.lane:not(.laneCollapsed) .chevron {
+  color: var(--text);
 }
 
-.laneCollapsed {
-  min-height: auto;
-  padding: 4px 10px;
-}
-
-.laneCollapsed .laneHeader {
-  margin-bottom: 0;
+.laneCollapsed .laneToggle h2 {
+  color: var(--muted);
 }
 
 .laneDropTarget {
   background: var(--accent-soft);
 }
 
-.laneHeader > span {
-  background: transparent;
-  border-radius: var(--radius-sm);
-  color: var(--subtle);
+.laneCount {
+  background: var(--badge-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--mono-font);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
-  padding: 0;
+  line-height: 1;
+  padding: 3px 6px;
+}
+
+.laneCountZero {
+  color: var(--subtle);
 }
 
 .emptyBoard {
@@ -705,17 +774,20 @@ select:focus-visible {
 .cards {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
+/* Task card — dot + mono id | prio icon + label, title, agent chip | claim. */
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 1px solid var(--line);
+  background: var(--card);
+  border: 1px solid var(--card-stroke);
   border-radius: var(--radius);
   color: var(--text);
   cursor: pointer;
-  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
   text-align: left;
   width: 100%;
   position: relative;
@@ -723,63 +795,73 @@ select:focus-visible {
 }
 
 .card:hover {
-  background: var(--panel-2);
   border-color: var(--line-strong);
-  transform: none;
 }
 
-.priority-high::before,
-.priority-medium::before,
-.priority-low::before {
-  content: "";
-  position: absolute;
-  top: 13px;
-  left: 11px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+body.vscode-light .card:hover {
+  border-color: rgba(0, 0, 0, 0.3);
 }
 
-.priority-high::before {
-  background: var(--red);
-}
-
-.priority-medium::before {
-  background: var(--amber);
-}
-
-.priority-low::before {
-  background: var(--subtle);
-}
-
-.cardMeta,
-.agentLine {
+.cardTop,
+.cardBottom {
   align-items: center;
-  color: var(--muted);
   display: flex;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
   justify-content: space-between;
-  text-transform: none;
-  letter-spacing: 0;
+  width: 100%;
 }
 
-.cardMeta {
-  padding-left: 14px;
+.idGroup {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
 }
 
-.cardMeta strong {
-  color: var(--subtle);
+.statusDot {
+  background: var(--subtle);
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.status-ready-for-agent .statusDot { background: var(--amber); }
+.status-building .statusDot { background: var(--blue); }
+.status-ready-for-qa .statusDot { background: var(--muted); }
+.status-qa-running .statusDot { background: var(--purple); }
+.status-failed-qa .statusDot { background: var(--red); }
+.status-human-review .statusDot { background: var(--amber); }
+.status-done .statusDot { background: var(--green); }
+.status-merged .statusDot { background: var(--green); }
+
+.cardId {
+  color: var(--muted);
+  font-family: var(--mono-font);
+  font-size: 11px;
   font-weight: 500;
-  font-size: 11px;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cardMeta em {
-  font-style: normal;
+.prioGroup {
+  align-items: center;
   color: var(--subtle);
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 5px;
   font-size: 11px;
+  font-weight: 500;
 }
+
+.prioGroup svg {
+  display: block;
+}
+
+.prio-high svg { color: var(--text); }
+.prio-medium svg { color: var(--muted); }
+.prio-low svg { color: var(--subtle); }
 
 .cardTitle {
   display: -webkit-box;
@@ -789,26 +871,88 @@ select:focus-visible {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
-  margin: 4px 0 8px;
+  margin: 0;
   color: var(--text);
   letter-spacing: -0.005em;
 }
 
-.agentLine {
+.agentChip {
+  background: var(--agent-chip-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--agent-chip-text);
+  font-family: var(--mono-font);
+  font-size: 10px;
+  line-height: 1.4;
+  padding: 2px 6px;
+}
+
+.agentChip.agent-codex {
+  background: var(--codex-chip-bg);
+  color: var(--codex-chip-text);
+}
+
+.agentChip.agent-unassigned {
+  background: var(--badge-bg);
   color: var(--subtle);
 }
 
-.agentLine > span:first-child {
-  color: var(--muted);
+.cardClaim {
+  align-items: center;
+  color: var(--subtle);
+  display: inline-flex;
+  font-family: var(--mono-font);
+  font-size: 10px;
+  gap: 6px;
 }
 
+.cardClaim svg {
+  color: var(--muted);
+  display: block;
+}
+
+/* Sidebar host — full-bleed rows exactly like trellis-board-collapsed/expanded. */
+body[data-host='sidebar'] .board {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-x: hidden;
+}
+
+body[data-host='sidebar'] .lane {
+  min-height: auto;
+  padding: 0;
+}
+
+body[data-host='sidebar'] .laneHeader {
+  border-bottom: 1px solid var(--line);
+  margin: 0;
+  padding: 11px 14px;
+}
+
+body[data-host='sidebar'] .laneCollapsed {
+  padding: 0;
+}
+
+body[data-host='sidebar'] .cards {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px 16px;
+}
+
+body[data-host='sidebar'] .cards:empty {
+  display: none;
+}
+
+/* Drawer — task detail / project context. */
 .drawer {
   background: var(--bg);
   border-left: 1px solid var(--line);
   bottom: 0;
   box-shadow: -8px 0 32px var(--shadow);
   overflow: auto;
-  padding: 20px 22px;
+  padding: 16px;
   position: fixed;
   right: 0;
   top: 0;
@@ -843,33 +987,34 @@ select:focus-visible {
 .drawerHeader .eyebrow {
   display: block;
   color: var(--subtle);
-  font-size: 11px;
+  font-family: var(--mono-font);
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0;
+  letter-spacing: 0.04em;
   margin: 0 0 4px;
-  text-transform: none;
+  text-transform: uppercase;
 }
 
 .titleInput {
   background: transparent;
   border: 0;
+  border-radius: 0;
   color: var(--text);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.4;
+  min-height: 0;
   outline: 0;
+  overflow: hidden;
   padding: 0;
-  text-overflow: ellipsis;
+  resize: none;
   width: 100%;
 }
 
-.titleInput:focus {
-  text-overflow: clip;
-}
-
 .drawerTitle {
-  font-size: 26px;
-  line-height: 1;
+  font-size: 20px;
+  line-height: 1.1;
   margin: 0;
 }
 
@@ -881,7 +1026,7 @@ select:focus-visible {
 }
 
 .automationHint {
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--green);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
@@ -909,7 +1054,7 @@ select:focus-visible {
 .reviewLabel {
   color: var(--amber);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -929,17 +1074,17 @@ select:focus-visible {
 }
 
 .commentHistory {
-  border-left: 2px solid var(--accent);
+  border-top: 1px solid var(--line);
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 6px 0 10px;
-  padding-left: 12px;
+  padding-top: 12px;
 }
 
 .commentHistoryHeader {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -950,10 +1095,10 @@ select:focus-visible {
 }
 
 .commentItem {
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 9px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .commentItem > div {
@@ -972,55 +1117,208 @@ select:focus-visible {
 .commentItem time { margin-left: auto; }
 
 .commentItem p {
-  color: var(--text);
+  color: var(--body-text);
   font-size: 12px;
   line-height: 1.5;
-  margin: 7px 0 0;
+  margin: 5px 0 0;
   white-space: pre-wrap;
 }
 
-.props {
+/* Full-screen task detail page (trellis-task-detail). */
+.detailPage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.detailNav {
+  align-items: center;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  height: 48px;
+  justify-content: space-between;
+  padding: 0 14px 0 8px;
+}
+
+.detailNavLeft,
+.detailNavRight {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detailNavId {
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+.saveHint {
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+.navTitle {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.fieldHint {
+  color: var(--subtle);
+  font-size: 10.5px;
+  margin: 6px 0 0;
+}
+
+/* Confirmation modal (webviews cannot use window.confirm). */
+.modalOverlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 30;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px var(--shadow);
+  max-width: 340px;
+  padding: 16px;
+  width: 100%;
+}
+
+.modal h3 {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.modal p {
+  color: var(--body-text);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.detailBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px 16px 20px;
+}
+
+.detailBody .titleInput {
+  font-size: 15px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.props {
   display: grid;
   gap: 2px;
-  margin-top: 16px;
-  padding: 10px 0;
+  margin-bottom: 16px;
 }
 
 .propRow {
   align-items: center;
-  display: grid;
+  display: flex;
+  flex-direction: row;
   gap: 8px;
-  grid-template-columns: 110px 1fr;
+  justify-content: space-between;
+  letter-spacing: 0;
+  padding: 4px 0;
+  text-transform: none;
 }
 
-.propRow span {
-  color: var(--muted);
+.propRow > span:first-child {
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* The visible control is custom (dot / priority icon + label + chevron);
+   a transparent native select sits on top for the actual dropdown. */
+.propValue {
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  position: relative;
+}
+
+.propDisplay {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  color: var(--text);
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 5px 6px;
 }
 
-.propRow select {
-  background-color: transparent;
-  border-color: transparent;
-  font-size: 12px;
-  justify-self: start;
-  min-height: 26px;
-  min-width: 160px;
-  padding: 2px 24px 2px 6px;
+.propDisplay .statusDot {
+  height: 6px;
+  width: 6px;
 }
 
-.propRow:hover select {
-  border-color: var(--line);
+.propDisplay svg {
+  display: block;
 }
 
-.propRow select:focus {
-  border-color: var(--accent);
+.propChevron {
+  align-items: center;
+  color: var(--subtle);
+  display: inline-flex;
+}
+
+.propChevron svg {
+  height: 10px;
+  width: 10px;
+}
+
+.propSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  min-height: 0;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.propValue:hover {
+  background: var(--badge-bg);
+}
+
+.propValue:has(.propSelect:focus-visible) {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .action {
-  background: var(--secondary-button-bg);
-  color: var(--secondary-button-fg);
+  background: var(--badge-bg);
+  color: var(--text);
   font-size: 12px;
   font-weight: 500;
   min-height: 32px;
@@ -1028,20 +1326,18 @@ select:focus-visible {
 }
 
 .action:hover {
-  background: var(--secondary-button-hover);
   border-color: var(--line-strong);
 }
 
 .actionPrimary {
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  color: var(--accent);
+  background: var(--ink-btn-bg);
+  border-color: var(--ink-btn-bg);
+  color: var(--ink-btn-fg);
   font-weight: 500;
 }
 
 .actionPrimary:hover {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  border-color: var(--accent);
+  opacity: 0.88;
 }
 
 .statusPanel {
@@ -1080,16 +1376,18 @@ label {
   display: flex;
   flex-direction: column;
   font-size: 11px;
-  font-weight: 500;
-  gap: 5px;
+  font-weight: 600;
+  gap: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
-label:first-child,
-label:nth-child(2),
-label:nth-child(3),
-label:nth-child(4),
-label:nth-child(5),
-label:nth-child(6) {
+.formGrid label:first-child,
+.formGrid label:nth-child(2),
+.formGrid label:nth-child(3),
+.formGrid label:nth-child(4),
+.formGrid label:nth-child(5),
+.formGrid label:nth-child(6) {
   grid-column: 1 / -1;
 }
 
@@ -1099,13 +1397,16 @@ select {
   background: var(--input-bg);
   border: 1px solid var(--input-border);
   border-radius: var(--radius);
-  color: var(--input-fg);
-  font-size: 13px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1.6;
   min-height: 76px;
   padding: 8px 10px;
   resize: vertical;
   outline: 0;
+  text-transform: none;
   transition: border-color 0.12s ease;
 }
 
@@ -1134,17 +1435,53 @@ input.textInput {
 }
 
 .fields label {
+  gap: 8px;
+}
+
+.fieldSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Section headers match the uppercase field labels but collapse like lanes. */
+.fieldToggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 600;
   gap: 6px;
+  letter-spacing: 0.04em;
+  padding: 0;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.fieldToggle:hover {
+  color: var(--text);
+}
+
+.fieldSection textarea {
+  width: 100%;
 }
 
 /* Inline-editor pattern: negative margins cancel the padding so the text
    glyphs sit flush with the label, while hover/focus still get a full box. */
+/* Auto-grown to content via autoGrow(); no fixed height so PRD and
+   Acceptance Criteria always show everything without inner scrolling. */
 .fields textarea {
   background: transparent;
   border-color: transparent;
+  color: var(--body-text);
   margin: 0 -10px;
-  min-height: 88px;
+  min-height: 32px;
+  overflow: hidden;
   padding: 6px 10px;
+  resize: none;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
@@ -1153,8 +1490,9 @@ input.textInput {
 }
 
 .fields textarea:focus {
-  background: var(--panel);
+  background: var(--input-bg);
   border-color: var(--accent);
+  color: var(--text);
 }
 
 .detailSections {
@@ -1167,8 +1505,10 @@ input.textInput {
 .detailBlock h4 {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   margin: 0 0 5px;
+  text-transform: uppercase;
 }
 
 .detailBlock ul {
@@ -1178,7 +1518,7 @@ input.textInput {
 
 .detailBlock li,
 .detailBlock p {
-  color: var(--text);
+  color: var(--body-text);
   font-size: 12px;
   line-height: 1.6;
   margin: 0;
@@ -1196,98 +1536,27 @@ input.textInput {
 
 .contextActions {
   align-items: center;
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
   display: grid;
   gap: 10px;
   grid-template-columns: max-content 1fr;
-  margin: 18px 0;
-  padding: 14px 0;
+  margin: 16px 0 2px;
 }
 
 .contextIntro {
   align-items: flex-start;
-  background: linear-gradient(135deg, var(--accent-soft), transparent 72%);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  border-radius: var(--radius);
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-  padding: 12px;
-}
-
-.contextIntro p {
-  color: var(--muted);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.contextOptional {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  border-radius: 999px;
-  color: var(--text);
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 3px 7px;
-  text-transform: uppercase;
-}
-
-.contextModeGroup {
+  background: transparent;
   border: 0;
-  margin: 18px 0 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 0;
 }
 
-.contextModeGroup legend {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  margin-bottom: 7px;
-}
-
-.contextModeOptions {
-  background: var(--input-bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  padding: 3px;
-}
-
-.contextModeOptions label {
-  border-radius: calc(var(--radius) - 2px);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 6px 8px;
-  text-align: center;
-}
-
-.contextModeOptions label.selected {
-  background: var(--panel);
-  box-shadow: 0 0 0 1px var(--line);
-  color: var(--text);
-}
-
-.contextModeOptions input {
-  height: 1px;
-  opacity: 0;
-  position: absolute;
-  width: 1px;
-}
-
-.contextModeOptions label:has(input:focus-visible) {
-  outline: 1px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.contextBudget {
-  color: var(--subtle);
-  font-size: 10px;
-  margin: 7px 1px 0;
+.contextIntro p {
+  color: var(--body-text);
+  line-height: 1.5;
+  margin: 0;
 }
 
 .contextBlock {
@@ -1299,7 +1568,12 @@ input.textInput {
 }
 
 .bigInput {
-  min-height: 180px;
+  min-height: 118px;
+}
+
+.contextBlock textarea,
+.bigInput {
+  resize: none;
 }
 
 textarea::placeholder {
@@ -1307,13 +1581,15 @@ textarea::placeholder {
 }
 
 .sectionToggle {
+  align-items: center;
   background: transparent;
   border: 0;
-  color: var(--muted);
+  color: var(--body-text);
   cursor: pointer;
-  display: block;
+  display: flex;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  gap: 6px;
   margin: 4px 0 12px;
   padding: 6px 0;
   text-align: left;
@@ -1332,18 +1608,16 @@ textarea::placeholder {
 }
 
 .action:disabled:hover {
-  background: var(--secondary-button-bg);
+  background: var(--badge-bg);
   border-color: var(--line);
 }
 
 .actionPrimary:disabled:hover {
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  opacity: 0.45;
 }
 
 .primary:disabled:hover {
-  background: var(--button-bg);
-  border-color: var(--button-bg);
+  opacity: 0.45;
 }
 
 .contextActions p {
@@ -1366,34 +1640,203 @@ textarea::placeholder {
 }
 
 .inferencePanel {
-  border-top: 1px solid var(--line);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   margin-top: 18px;
-  padding-top: 16px;
+  padding: 12px;
 }
 
 .inferencePanel h3 {
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   margin: 0 0 10px;
+  text-transform: uppercase;
 }
 
 .inferencePanel p {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   display: grid;
-  gap: 12px;
-  grid-template-columns: 150px 1fr;
+  gap: 10px;
+  grid-template-columns: 110px 1fr;
   margin: 0;
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .inferencePanel strong {
-  color: var(--accent);
-  font-size: 12px;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .inferencePanel span {
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--body-text);
+  font-size: 11px;
   line-height: 1.45;
+}
+
+/* Comments / Activity tabs (chat-thread-section). */
+.threadSection {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+.tabBar {
+  display: flex;
+  gap: 16px;
+  padding-top: 10px;
+}
+
+.tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--subtle);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 0 8px;
+}
+
+.tab:hover {
+  color: var(--muted);
+}
+
+.tabActive,
+.tabActive:hover {
+  border-bottom-color: var(--text);
+  color: var(--text);
+}
+
+.commentThread,
+.activityThread {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 0;
+}
+
+.activityThread {
+  gap: 6px;
+}
+
+.messageNote {
+  display: flex;
+  gap: 8px;
+}
+
+.messageIcon {
+  align-items: center;
+  color: var(--subtle);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 16px;
+  justify-content: center;
+  margin-top: 2px;
+  width: 16px;
+}
+
+.messageIcon svg {
+  display: block;
+}
+
+.messageContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.messageContent p {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.messageContent strong {
+  font-weight: 600;
+}
+
+.messageContent .mention {
+  color: var(--agent-chip-text);
+}
+
+.messageContent time {
+  color: var(--subtle);
+  font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+.threadEmpty {
+  color: var(--subtle);
+  font-size: 12px;
+  margin: 0;
+}
+
+.inlineCommentInput {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+
+.inputRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.noteInput {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 30px;
+  padding: 7px 10px;
+  resize: none;
+}
+
+.noteInput:focus {
+  border-color: var(--accent);
+}
+
+.sendBtn {
+  align-items: center;
+  background: var(--agent-chip-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--agent-chip-text);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.sendBtn:hover:not(:disabled) {
+  border-color: var(--agent-chip-text);
+}
+
+.sendBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.threadCaption {
+  color: var(--subtle);
+  font-size: 10.5px;
+  margin: 0;
 }
 
 .timeline {
@@ -1421,9 +1864,10 @@ textarea::placeholder {
 
 .timelineRow time {
   color: var(--subtle);
-  font-size: 11px;
+  font-family: var(--mono-font);
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: nowrap;
 }
 
@@ -1434,7 +1878,7 @@ textarea::placeholder {
 }
 
 .timelineMessage {
-  color: var(--text);
+  color: var(--body-text);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1460,6 +1904,10 @@ textarea::placeholder {
   display: none;
 }
 
+body[data-host='sidebar'] .expandButton {
+  display: block;
+}
+
 @media (max-width: 900px) {
   .expandButton {
     display: block;
@@ -1470,9 +1918,7 @@ textarea::placeholder {
   }
 
   .formGrid,
-  .actions,
-  .contextActions,
-  .inferencePanel p {
+  .actions {
     grid-template-columns: 1fr;
   }
 

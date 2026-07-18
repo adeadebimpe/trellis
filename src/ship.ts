@@ -165,7 +165,7 @@ async function shipViaLocalMerge(
   await storage.saveTask({
     task: {
       id: task.id,
-      status: 'done',
+      status: 'merged',
       shipResult,
       worktreePath: '',
       activityLog: [
@@ -175,7 +175,7 @@ async function shipViaLocalMerge(
     },
     expectedLastUpdated
   });
-  return `${task.id} merged into ${defaultBranch} and marked done.`;
+  return `${task.id} merged into ${defaultBranch} and moved to Merged.`;
 }
 
 async function removeWorktreeSafely(mainRoot: string, worktreePath: string): Promise<string> {

@@ -6,7 +6,8 @@ export const TASK_STATUSES = [
   'qa-running',
   'failed-qa',
   'human-review',
-  'done'
+  'done',
+  'merged'
 ] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
