@@ -1948,3 +1948,36 @@ body[data-host='sidebar'] .expandButton {
 @keyframes chatSpin {
   to { transform: rotate(360deg); }
 }
+
+/* Live agent terminal banner on the task detail page. */
+.terminalBanner {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--body-text);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 8px 8px 8px 10px;
+}
+
+.terminalBannerSpin {
+  color: var(--muted);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.terminalBannerSpin svg {
+  animation: chatSpin 1.4s linear infinite;
+}
+
+.terminalBannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.terminalBanner .ghost {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

@@ -975,7 +975,15 @@ function App(): JSX.Element {
               <p className="automationHint">QA is running and will record pass or fail automatically.</p>
             )}
             {state?.liveTerminals?.includes(draft.id) && (
-              <Action label="Show agent terminal" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })} />
+              <div className="terminalBanner" role="status">
+                <span className="terminalBannerSpin" aria-hidden="true"><LoaderPinwheelIcon /></span>
+                <span className="terminalBannerText">
+                  {draft.status === 'qa-running'
+                    ? `${draft.qaClaimedBy || draft.qaAgent} is running QA in a terminal.`
+                    : `${draft.claimedBy || draft.assignedAgent} is working in a terminal.`}
+                </span>
+                <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>
+              </div>
             )}
             {draft.status === 'human-review' && (
               <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />

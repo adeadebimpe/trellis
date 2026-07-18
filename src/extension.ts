@@ -606,7 +606,11 @@ async function runStartBuildAction(id: string): Promise<void> {
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
   await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
-  vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`);
+  void vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`, 'Show terminal').then((choice) => {
+    if (choice === 'Show terminal') {
+      agentTerminals.get(id)?.terminal.show();
+    }
+  });
   await postState();
 }
 
@@ -625,7 +629,11 @@ async function runStartQaAction(id: string): Promise<void> {
   const started = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
   await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
-  vscode.window.showInformationMessage(`${agentLabel(agent)} started QA for ${id} in a terminal.`);
+  void vscode.window.showInformationMessage(`${agentLabel(agent)} started QA for ${id} in a terminal.`, 'Show terminal').then((choice) => {
+    if (choice === 'Show terminal') {
+      agentTerminals.get(id)?.terminal.show();
+    }
+  });
   await postState();
 }
 
