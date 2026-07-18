@@ -665,7 +665,7 @@ function App(): JSX.Element {
                     <span className="cardTitle" title={task.title || 'Untitled task'}>{task.title || 'Untitled task'}</span>
                     <span className="cardBottom">
                       <span className={`agentChip agent-${task.assignedAgent}`}>{task.assignedAgent}</span>
-                      <span className="cardClaim">
+                      <span className={`cardClaim${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' cardClaimLive' : ''}`}>
                         <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
                         <LoaderPinwheelIcon />
                       </span>

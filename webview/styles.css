@@ -1981,3 +1981,13 @@ body[data-host='sidebar'] .expandButton {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* Tasks with a live agent terminal (or PRD drafting) spin the pinwheel. */
+.cardClaimLive {
+  color: var(--green);
+}
+
+.cardClaimLive svg {
+  animation: chatSpin 1.4s linear infinite;
+  color: var(--green);
+}

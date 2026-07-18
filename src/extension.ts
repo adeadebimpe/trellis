@@ -477,11 +477,22 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await openBoard(context);
         break;
       case 'show-terminal': {
-        const entry = agentTerminals.get(message.id);
+        let entry = agentTerminals.get(message.id);
+        if (!entry) {
+          // The map can lose entries across extension-host restarts even though
+          // the terminal itself survived; re-adopt it by name before giving up.
+          const found = vscode.window.terminals.find((terminal) => TERMINAL_NAME_PATTERN.exec(terminal.name)?.[1] === message.id);
+          if (found) {
+            const kind = (TERMINAL_NAME_PATTERN.exec(found.name)?.[2] ?? 'build') as AgentKind;
+            entry = { terminal: found, kind };
+            agentTerminals.set(message.id, entry);
+          }
+        }
         if (entry) {
-          entry.terminal.show();
+          entry.terminal.show(false);
         } else {
-          vscode.window.showInformationMessage(`No live agent terminal for ${message.id}.`);
+          vscode.window.showInformationMessage(`No live agent terminal for ${message.id}. Check the terminal panel for a "Trellis: ${message.id}" entry.`);
+          await postState();
         }
         break;
       }
