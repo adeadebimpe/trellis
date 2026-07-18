@@ -12,7 +12,7 @@ execFileSync('./node_modules/.bin/esbuild', [
 ], { stdio: 'inherit' });
 
 const require = createRequire(import.meta.url);
-const { buildPrdPrompt, getPrdSourceBrief, normalizeSpecPatch, deriveTaskTitle, clipTitle, TITLE_MAX_LENGTH } = require(outfile);
+const { buildPrdPrompt, getPrdSourceBrief, normalizeSpecPatch, deriveTaskTitle, clipTitle, TITLE_MAX_LENGTH, PRD_FIELD_LIMITS, PROJECT_CONTEXT_LIMITS } = require(outfile);
 
 const task = {
   id: 'TASK-003',
@@ -163,8 +163,8 @@ const limitedInput = JSON.parse(buildPrdPrompt(task, {
   contextNotes: 'x'.repeat(2000),
   goals: Array.from({ length: 20 }, (_, index) => `Goal ${index}`)
 }).split('Input:\n')[1]);
-assert.equal(limitedInput.projectContext.contextNotes.length, 1200);
-assert.equal(limitedInput.projectContext.goals.length, 12);
+assert.equal(limitedInput.projectContext.contextNotes.length, PROJECT_CONTEXT_LIMITS.string);
+assert.equal(limitedInput.projectContext.goals.length, PROJECT_CONTEXT_LIMITS.arrayItems);
 assert.ok(limitedInput.projectContext.contextNotes.endsWith('…'));
 
 const patch = normalizeSpecPatch({
@@ -193,6 +193,21 @@ const longTitlePatch = normalizeSpecPatch({ description: 'x', title: 'a'.repeat(
 assert.ok(longTitlePatch.title.length <= TITLE_MAX_LENGTH);
 assert.ok(longTitlePatch.title.endsWith('…'));
 assert.ok(!longTitlePatch.title.includes('...'));
+
+const oversizedPatch = normalizeSpecPatch({
+  description: 'D'.repeat(1000),
+  acceptanceCriteria: Array.from({ length: 10 }, (_, index) => `${index}-${'A'.repeat(300)}`),
+  qaChecklist: Array.from({ length: 10 }, (_, index) => `${index}-${'Q'.repeat(300)}`),
+  designQaChecklist: Array.from({ length: 10 }, (_, index) => `${index}-${'D'.repeat(300)}`),
+  validationCommands: Array.from({ length: 10 }, (_, index) => `command-${index}-${'x'.repeat(300)}`),
+  relevantFiles: Array.from({ length: 10 }, (_, index) => `src/${index}/${'f'.repeat(300)}`),
+  constraints: Array.from({ length: 10 }, (_, index) => `${index}-${'C'.repeat(300)}`)
+}, task, project);
+assert.equal(oversizedPatch.description.length, PRD_FIELD_LIMITS.description);
+for (const [field, limits] of Object.entries(PRD_FIELD_LIMITS).filter(([, limits]) => typeof limits === 'object')) {
+  assert.equal(oversizedPatch[field].length, limits.items, `${field} item limit`);
+  assert.ok(oversizedPatch[field].every((item) => item.length <= limits.itemLength), `${field} item length`);
+}
 
 // Word-boundary clipping: a long multi-word entry clips at a space, never mid-word.
 const words = 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
