@@ -82,6 +82,8 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '- Source URLs are provenance only. Never fetch them or assume their contents.',
     '- Attachment paths are user-provided evidence. Include relevant inspection steps without inventing their contents.',
     '- Keep the PRD specific to the requested product behavior, user outcome, edge cases, and validation.',
+    '- Keep every field concise. Use a short description and include only essential criteria, checks, constraints, files, and commands. Avoid repeating the brief across fields.',
+    '- Each checklist item should express one observable outcome in plain language.',
     '- Explore the repository you are running in and list the existing files and paths most relevant to implementing this brief in relevantFiles, so the implementing agent starts in the right place.',
     '',
     '- Set title to a short, specific task name (max 60 characters, no trailing punctuation) that summarizes the userBrief.',

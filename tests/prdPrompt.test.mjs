@@ -96,6 +96,8 @@ assert.doesNotMatch(prompt, /"taskId"|"taskTitle"|"priority"|"assignedAgent"|"qa
 assert.match(prompt, /relevantFiles/);
 assert.match(prompt, /Explore the repository/);
 assert.match(prompt, /"title": "string"/);
+assert.match(prompt, /Keep every field concise/);
+assert.match(prompt, /Avoid repeating the brief across fields/);
 
 const serializedInput = JSON.parse(prompt.slice(prompt.indexOf('Input:') + 'Input:'.length).trim());
 assert.deepEqual(Object.keys(serializedInput), ['userBrief', 'contextMode', 'projectContext']);
