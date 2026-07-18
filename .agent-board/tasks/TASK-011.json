@@ -1,7 +1,7 @@
 {
   "id": "TASK-011",
   "title": "Derive short task titles from entry with ellipsis and drawer tooltip",
-  "status": "done",
+  "status": "merged",
   "priority": "medium",
   "assignedAgent": "claude",
   "qaAgent": "claude",
