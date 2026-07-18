@@ -62,6 +62,28 @@ const project = {
 
 assert.equal(getPrdSourceBrief(task), task.brief);
 
+const intakeTask = {
+  ...task,
+  brief: 'Legacy brief should not win.',
+  intake: {
+    method: 'manual',
+    text: 'Checkout fails after selecting a saved card.',
+    sourceUrl: 'https://issues.example.test/ENG-142',
+    intent: 'investigate',
+    createdAt: '2026-07-18T00:00:00.000Z',
+    attachments: [{ name: 'error.png', path: '.agent-board/attachments/TASK-003/error.png', mediaType: 'image/png', size: 42 }]
+  }
+};
+const intakeBrief = getPrdSourceBrief(intakeTask);
+assert.match(intakeBrief, /Checkout fails after selecting a saved card/);
+assert.match(intakeBrief, /Processing intent: investigate/);
+assert.match(intakeBrief, /provenance only; do not fetch/);
+assert.match(intakeBrief, /error\.png/);
+assert.doesNotMatch(intakeBrief, /Legacy brief/);
+const intakePrompt = buildPrdPrompt(intakeTask, project);
+assert.match(intakePrompt, /Source URLs are provenance only/);
+assert.match(intakePrompt, /Attachment paths are user-provided evidence/);
+
 const prompt = buildPrdPrompt(task, project);
 assert.match(prompt, /userBrief/);
 assert.match(prompt, /Let shoppers save a delivery note/);

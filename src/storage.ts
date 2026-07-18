@@ -6,7 +6,7 @@ import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
 import { selectDoneTasksToArchive } from './archive';
-import { AgentBoardFile, AgentBoardTask, AssignedAgent, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
+import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
 const execFileAsync = promisify(execFile);
 
@@ -164,6 +164,9 @@ export class AgentBoardStorage {
         const derived = deriveTaskTitle(task);
         task.title = derived === task.id ? '' : derived;
       }
+      if (initial?.intake) {
+        task.intake = initial.intake;
+      }
       if (initial?.assignedAgent) {
         task.assignedAgent = this.normalizeAgent(initial.assignedAgent);
       }
@@ -174,6 +177,27 @@ export class AgentBoardStorage {
       await this.appendRootActivity('vscode', `Created ${id}.`);
       return task;
     });
+  }
+
+  async copyIntakeAttachments(taskId: string, sourcePaths: string[]): Promise<IntakeAttachment[]> {
+    if (!sourcePaths.length) return [];
+    const destinationDir = vscode.Uri.joinPath(this.boardDir, 'attachments', taskId);
+    await this.ensureDir(destinationDir);
+    const attachments: IntakeAttachment[] = [];
+    for (const sourcePath of sourcePaths) {
+      const source = vscode.Uri.file(sourcePath);
+      const name = source.path.split('/').pop() || 'attachment';
+      const destination = vscode.Uri.joinPath(destinationDir, name);
+      await vscode.workspace.fs.copy(source, destination, { overwrite: false });
+      const stat = await vscode.workspace.fs.stat(destination);
+      attachments.push({
+        name,
+        path: vscode.workspace.asRelativePath(destination, false),
+        mediaType: mediaTypeForName(name),
+        size: stat.size
+      });
+    }
+    return attachments;
   }
 
   async saveTask(request: SaveTaskRequest, actor = 'vscode'): Promise<AgentBoardTask> {
@@ -702,6 +726,18 @@ export class AgentBoardStorage {
     await vscode.workspace.fs.writeFile(tmp, encoder.encode(`${JSON.stringify(value, null, 2)}\n`));
     await vscode.workspace.fs.rename(tmp, uri, { overwrite: true });
   }
+}
+
+function mediaTypeForName(name: string): string {
+  const extension = name.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'gif') return 'image/gif';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'pdf') return 'application/pdf';
+  if (extension === 'md') return 'text/markdown';
+  if (extension === 'txt' || extension === 'log') return 'text/plain';
+  return 'application/octet-stream';
 }
 
 class UriBackedWorkspaceFolder implements vscode.WorkspaceFolder {

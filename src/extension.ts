@@ -227,6 +227,67 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         }
         break;
       }
+      case 'select-intake-files': {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: true,
+          openLabel: 'Attach to intake',
+          title: 'Choose screenshots, images, PRDs, or supporting files',
+          filters: {
+            'Supported files': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'md', 'txt', 'log'],
+            'All files': ['*']
+          }
+        });
+        webview.postMessage({
+          type: 'intake-files-selected',
+          files: (picked ?? []).map((uri) => ({ name: uri.path.split('/').pop() ?? 'attachment', path: uri.fsPath }))
+        });
+        break;
+      }
+      case 'create-intake': {
+        const text = String(message.intake?.text ?? '').trim();
+        if (!text) throw new Error('Add some source material before creating a draft.');
+        const sourceUrl = String(message.intake?.sourceUrl ?? '').trim();
+        if (sourceUrl) {
+          try {
+            const parsed = new URL(sourceUrl);
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error();
+          } catch {
+            throw new Error('Source URL must be a valid http or https URL.');
+          }
+        }
+        const allowedIntents = new Set(['single-task', 'decompose', 'define', 'investigate']);
+        const intent = allowedIntents.has(message.intake?.intent) ? message.intake.intent : 'single-task';
+        const autoAgent = await pickAutoAgent();
+        const now = new Date().toISOString();
+        const task = await storage.createTask({
+          brief: text,
+          assignedAgent: autoAgent,
+          qaAgent: autoAgent,
+          intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments: [], intent, createdAt: now }
+        });
+        const paths = Array.isArray(message.intake?.attachmentPaths)
+          ? message.intake.attachmentPaths.map(String).filter(Boolean)
+          : [];
+        const attachments = await storage.copyIntakeAttachments(task.id, paths);
+        const withIntake = await storage.saveTask({
+          task: {
+            id: task.id,
+            intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments, intent, createdAt: now },
+            activityLog: [
+              ...(task.activityLog ?? []),
+              { timestamp: now, actor: 'human', message: `Submitted ${intent} intake with ${attachments.length} attachment(s) for draft review.` }
+            ]
+          },
+          expectedLastUpdated: task.lastUpdated
+        });
+        await postState();
+        await runGenerateSpecAction(context, task.id, withIntake.lastUpdated, false);
+        await postState();
+        webview.postMessage({ type: 'intake-created', id: task.id });
+        break;
+      }
       case 'save-task':
         await storage.saveTask({ task: message.task, expectedLastUpdated: message.expectedLastUpdated });
         webview.postMessage({ type: 'saved', id: message.task.id });
@@ -369,7 +430,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
   }
 }
 
-async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string): Promise<boolean> {
+async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string, advanceBacklog = true): Promise<boolean> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = state.tasks.find((item) => item.id === id);
@@ -422,7 +483,7 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
         const currentTitle = task.title?.trim() ?? '';
         const derivedTitle = deriveTaskTitle({ ...task, title: '' });
         const useAiTitle = Boolean(aiTitle) && (!currentTitle || currentTitle === derivedTitle);
-        const advanceToReady = task.status === 'backlog';
+        const advanceToReady = advanceBacklog && task.status === 'backlog';
         await storage.saveTask({
           task: {
             id,
