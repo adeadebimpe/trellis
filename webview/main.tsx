@@ -472,6 +472,10 @@ function App(): JSX.Element {
     setProjectOpen(false);
   };
 
+  const boardColumns = state?.board.columns.filter((column) =>
+    column.id !== 'ready-for-qa' || state.tasks.some((task) => task.status === 'ready-for-qa')
+  ) ?? [];
+
   if (state && !state.settings.setupComplete) {
     return (
       <main className="shell">
@@ -573,12 +577,14 @@ function App(): JSX.Element {
         </section>
       ) : (
       <section className="board" aria-label="Trellis columns">
-        {state?.board.columns.map((column) => {
-          const tasks = state.tasks.filter((task) => task.status === column.id);
+        {boardColumns.map((column) => {
+          const tasks = state?.tasks.filter((task) => task.status === column.id) ?? [];
           const collapsed = hostMode === 'sidebar' && Boolean(collapsedLanes[column.id]);
+          const qaWaiting = column.id === 'ready-for-qa';
+          const laneTitle = qaWaiting ? 'QA Waiting' : column.title;
           return (
             <div
-              className={`lane${collapsed ? ' laneCollapsed' : ''}${collapsed && dropTarget === column.id ? ' laneDropTarget' : ''}`}
+              className={`lane${qaWaiting ? ' laneQaWaiting' : ''}${collapsed ? ' laneCollapsed' : ''}${collapsed && dropTarget === column.id ? ' laneDropTarget' : ''}`}
               key={column.id}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -597,18 +603,18 @@ function App(): JSX.Element {
                   <button
                     className="laneToggle"
                     aria-expanded={!collapsed}
-                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${column.title}`}
+                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${laneTitle}`}
                     onClick={() => toggleLane(column.id)}
                   >
                     <span className="chevron" aria-hidden="true">
                       {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
                     </span>
-                    <h2>{column.title}</h2>
+                    <h2>{laneTitle}</h2>
                   </button>
                 ) : (
                   <div>
-                    <h2>{column.title}</h2>
-                    <p>{statusHints[column.id]}</p>
+                    <h2>{laneTitle}</h2>
+                    <p>{qaWaiting ? 'Needs attention' : statusHints[column.id]}</p>
                   </div>
                 )}
                 <span className={`laneCount${tasks.length === 0 ? ' laneCountZero' : ''}`}>{tasks.length}</span>
