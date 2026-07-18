@@ -25,21 +25,6 @@ export function getPrdSourceBrief(task: AgentBoardTask): string {
 }
 
 export const TITLE_MAX_LENGTH = 60;
-export const PRD_FIELD_LIMITS = {
-  description: 480,
-  acceptanceCriteria: { items: 5, itemLength: 140 },
-  qaChecklist: { items: 4, itemLength: 140 },
-  designQaChecklist: { items: 3, itemLength: 140 },
-  validationCommands: { items: 6, itemLength: 120 },
-  relevantFiles: { items: 8, itemLength: 160 },
-  constraints: { items: 4, itemLength: 140 }
-} as const;
-export const PROJECT_CONTEXT_LIMITS = {
-  brief: 2500,
-  string: 600,
-  arrayItems: 8,
-  arrayItemLength: 160
-} as const;
 
 // Clip display titles at a word boundary, appending a single '…' so the result
 // (ellipsis included) never exceeds maxLength. Falls back to a hard clip when
@@ -82,7 +67,7 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
   const projectContext = limitObject(compactObject(mode === 'lean'
     ? commonContext
     : { ...summaryContext, ...commonContext }));
-  const input = compactObject({ userBrief: limitString(userBrief, PROJECT_CONTEXT_LIMITS.brief), contextMode: mode, projectContext });
+  const input = compactObject({ userBrief: limitString(userBrief, 4000), contextMode: mode, projectContext });
   return [
     'You are a product/spec agent. Create an implementation-ready PRD for a coding agent.',
     'Return strict JSON only. Do not include markdown, commentary, or code fences.',
@@ -97,8 +82,8 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '- Source URLs are provenance only. Never fetch them or assume their contents.',
     '- Attachment paths are user-provided evidence. Include relevant inspection steps without inventing their contents.',
     '- Keep the PRD specific to the requested product behavior, user outcome, edge cases, and validation.',
-    '- Be concise. Description: at most 2 short sentences. Acceptance criteria: 3-5 short items. QA: 2-4 items. Design QA: 0-3 items. Constraints: 0-4 items. Avoid repeating the brief across fields.',
-    '- Each checklist item should express one observable outcome in plain language. Include only implementation-relevant files and executable validation commands.',
+    '- Keep every field concise. Use a short description and include only essential criteria, checks, constraints, files, and commands. Avoid repeating the brief across fields.',
+    '- Each checklist item should express one observable outcome in plain language.',
     '- Explore the repository you are running in and list the existing files and paths most relevant to implementing this brief in relevantFiles, so the implementing agent starts in the right place.',
     '',
     '- Set title to a short, specific task name (max 60 characters, no trailing punctuation) that summarizes the userBrief.',
@@ -169,9 +154,8 @@ function limitObject(value: Record<string, unknown>): Record<string, unknown> {
 }
 
 function limitValue(value: unknown): unknown {
-  if (typeof value === 'string') return limitString(value, PROJECT_CONTEXT_LIMITS.string);
-  if (Array.isArray(value)) return value.slice(0, PROJECT_CONTEXT_LIMITS.arrayItems)
-    .map((entry) => typeof entry === 'string' ? limitString(entry, PROJECT_CONTEXT_LIMITS.arrayItemLength) : limitValue(entry));
+  if (typeof value === 'string') return limitString(value, 1200);
+  if (Array.isArray(value)) return value.slice(0, 12).map((entry) => typeof entry === 'string' ? limitString(entry, 240) : limitValue(entry));
   if (value && typeof value === 'object') return limitObject(value as Record<string, unknown>);
   return value;
 }
@@ -183,13 +167,13 @@ function limitString(value: string, maxLength: number): string {
 
 export function normalizeSpecPatch(value: Record<string, unknown>, task: AgentBoardTask, project: ProjectContext): AgentSpecPatch {
   const patch: AgentSpecPatch = {
-    description: limitString(asString(value.description) || task.description, PRD_FIELD_LIMITS.description),
-    acceptanceCriteria: asStringArray(value.acceptanceCriteria, task.acceptanceCriteria, PRD_FIELD_LIMITS.acceptanceCriteria),
-    qaChecklist: asStringArray(value.qaChecklist, task.qaChecklist, PRD_FIELD_LIMITS.qaChecklist),
-    designQaChecklist: asStringArray(value.designQaChecklist, task.designQaChecklist, PRD_FIELD_LIMITS.designQaChecklist),
-    validationCommands: asStringArray(value.validationCommands, task.validationCommands.length ? task.validationCommands : project.validationCommands, PRD_FIELD_LIMITS.validationCommands),
-    relevantFiles: asStringArray(value.relevantFiles, task.relevantFiles, PRD_FIELD_LIMITS.relevantFiles),
-    constraints: asStringArray(value.constraints, task.constraints, PRD_FIELD_LIMITS.constraints)
+    description: asString(value.description) || task.description,
+    acceptanceCriteria: asStringArray(value.acceptanceCriteria, task.acceptanceCriteria),
+    qaChecklist: asStringArray(value.qaChecklist, task.qaChecklist),
+    designQaChecklist: asStringArray(value.designQaChecklist, task.designQaChecklist),
+    validationCommands: asStringArray(value.validationCommands, task.validationCommands.length ? task.validationCommands : project.validationCommands),
+    relevantFiles: asStringArray(value.relevantFiles, task.relevantFiles),
+    constraints: asStringArray(value.constraints, task.constraints)
   };
   const title = asString(value.title).replace(/[.!?]+$/g, '').trim();
   if (title) {
@@ -219,13 +203,10 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function asStringArray(
-  value: unknown,
-  fallback: string[],
-  limits: { items: number; itemLength: number }
-): string[] {
-  const source = Array.isArray(value) ? value : fallback;
-  const normalized = source.map((item) => String(item).trim()).filter(Boolean);
-  const selected = normalized.length ? normalized : fallback;
-  return selected.slice(0, limits.items).map((item) => limitString(String(item), limits.itemLength));
+function asStringArray(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  const normalized = value.map((item) => String(item).trim()).filter(Boolean);
+  return normalized.length ? normalized : fallback;
 }
