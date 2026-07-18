@@ -1900,10 +1900,6 @@ body[data-host='sidebar'] .expandButton {
     display: block;
   }
 
-  .board {
-    grid-template-columns: 1fr;
-  }
-
   .formGrid,
   .actions {
     grid-template-columns: 1fr;
