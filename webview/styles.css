@@ -636,11 +636,11 @@ select:focus-visible {
 
 /* Board — panel host: kanban columns. Sidebar host overrides below. */
 .board {
-  display: grid;
+  display: flex;
   gap: 1px;
   background: var(--line);
-  grid-template-columns: repeat(8, minmax(260px, 1fr));
   flex: 1;
+  flex-wrap: nowrap;
   overflow-x: auto;
   padding: 0;
 }
@@ -652,7 +652,16 @@ select:focus-visible {
   min-height: 100%;
   padding: 10px 10px 12px;
   display: flex;
+  flex: 1 0 260px;
   flex-direction: column;
+}
+
+.laneQaWaiting .laneHeader {
+  box-shadow: inset 0 -2px color-mix(in srgb, var(--amber) 72%, transparent);
+}
+
+.laneQaWaiting .laneHeader h2 {
+  color: var(--amber);
 }
 
 .laneHeader {
@@ -921,6 +930,7 @@ body[data-host='sidebar'] .board {
 }
 
 body[data-host='sidebar'] .lane {
+  flex: none;
   min-height: auto;
   padding: 0;
 }
@@ -1911,10 +1921,6 @@ body[data-host='sidebar'] .expandButton {
 @media (max-width: 900px) {
   .expandButton {
     display: block;
-  }
-
-  .board {
-    grid-template-columns: 1fr;
   }
 
   .formGrid,
