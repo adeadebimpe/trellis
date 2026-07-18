@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel, SpecProvider } from './ai';
 import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, signInCodexCli } from './cliAuth';
+import { isSetupComplete } from './onboarding';
 import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { getWorkspaceStorage, StaleTaskError } from './storage';
@@ -837,6 +838,7 @@ async function postState(): Promise<void> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const provider = activeContext ? getSpecProvider(activeContext) : undefined;
+  const availableAgents = await detectAvailableAgents();
   const message = {
     type: 'state',
     state: {
@@ -846,7 +848,11 @@ async function postState(): Promise<void> {
       settings: {
         specProvider: provider,
         specProviderLabel: specProviderLabel(provider),
-        setupComplete: Boolean(provider || activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY)),
+        setupComplete: isSetupComplete(
+          Boolean(provider),
+          Boolean(activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY)),
+          availableAgents.length
+        ),
         autoAssignAgent: await pickAutoAgent()
       }
     }
