@@ -310,7 +310,9 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           expectedLastUpdated: task.lastUpdated
         });
         await postState();
-        await runGenerateSpecAction(context, task.id, withIntake.lastUpdated, false);
+        // Chat-created tasks advance to Ready for Agent once the PRD drafts;
+        // the user reviews it in the detail page rather than a Backlog hold.
+        await runGenerateSpecAction(context, task.id, withIntake.lastUpdated);
         await postState();
         webview.postMessage({ type: 'intake-created', id: task.id });
         break;
@@ -358,6 +360,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
             });
           }
           await postState();
+          webview.postMessage({ type: 'prd-split-created', count: seeds.length });
           vscode.window.showInformationMessage(`Trellis created ${seeds.length} task(s) from the PRD.`);
         } finally {
           webview.postMessage({ type: 'prd-split-done' });

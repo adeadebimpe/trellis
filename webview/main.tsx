@@ -177,6 +177,7 @@ function App(): JSX.Element {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [prdSplitting, setPrdSplitting] = useState(false);
+  const [createBusy, setCreateBusy] = useState<'task' | 'prd' | null>(null);
   const [generatingIds, setGeneratingIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [prdOpen, setPrdOpen] = useState(true);
@@ -236,6 +237,7 @@ function App(): JSX.Element {
         setProjectSaveState('error');
         setReviewSubmitting(false);
         setPrdSplitting(false);
+        setCreateBusy(null);
       }
       if (event.data.type === 'saved-project') {
         if (projectEditVersion.current === projectSentVersion.current) {
@@ -287,16 +289,31 @@ function App(): JSX.Element {
       }
       if (event.data.type === 'prd-split-done') {
         setPrdSplitting(false);
+        setCreateBusy(null);
+      }
+      if (event.data.type === 'prd-split-created') {
+        // Tasks are on the board; leave the create screen if it is still open.
+        setCreateBusy(null);
+        setCreateText('');
+        setCreateOpen(false);
       }
       if (event.data.type === 'intake-created') {
-        // Open the drafted task only if the user has not focused another one.
-        setSelectedId((current) => (current === null ? event.data.id : current));
+        setCreateBusy(null);
+        if (createOpen) {
+          // The user waited on the create screen: take them to the drafted task.
+          setCreateText('');
+          setCreateOpen(false);
+          setSelectedId(event.data.id);
+        } else {
+          // They closed early: open the task only if nothing else is focused.
+          setSelectedId((current) => (current === null ? event.data.id : current));
+        }
       }
     };
     window.addEventListener('message', listener);
     vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', listener);
-  }, [selectedId, projectOpen, state?.project]);
+  }, [selectedId, projectOpen, state?.project, createOpen]);
 
   useEffect(() => () => {
     if (projectSaveTimer.current !== undefined) {
@@ -392,12 +409,14 @@ function App(): JSX.Element {
 
   const sendCreate = () => {
     const text = createText.trim();
-    if (!text || prdSplitting) {
+    if (!text || createBusy || prdSplitting) {
       return;
     }
     if (createMode === 'prd') {
+      setCreateBusy('prd');
       vscode.postMessage({ type: 'create-from-prd', prd: text, agent: createAgent });
     } else {
+      setCreateBusy('task');
       const mentions = Array.from(new Set(
         [...text.matchAll(/@([\w./~-]+)/g)].map((match) => match[1]).filter((path) => workspaceFiles.includes(path))
       ));
@@ -408,8 +427,8 @@ function App(): JSX.Element {
         intake: { text, intent: createMode === 'bug' ? 'investigate' : 'single-task', attachmentPaths: [] }
       });
     }
-    setCreateOpen(false);
-    setCreateText('');
+    // Stay on the create screen until the draft lands; the back arrow can
+    // dismiss it early and generation continues in the background.
     setMentionQuery(null);
   };
 
@@ -700,6 +719,12 @@ function App(): JSX.Element {
             </div>
           </div>
           <footer className="chatComposer" aria-label="Task composer">
+            {createBusy && (
+              <p className="chatStatus" role="status" aria-live="polite">
+                <LoaderPinwheelIcon />
+                {createBusy === 'prd' ? 'Splitting the PRD into tasks…' : 'Drafting the PRD…'} You can go back — this continues in the background.
+              </p>
+            )}
             {mentionQuery !== null && mentionMatches.length > 0 && (
               <div className="mentionMenu" role="listbox" aria-label="Workspace files">
                 {mentionMatches.map((file) => (
@@ -711,6 +736,7 @@ function App(): JSX.Element {
               rows={1}
               className="chatInput"
               autoFocus
+              disabled={createBusy !== null}
               placeholder={createMode === 'prd'
                 ? 'Paste your PRD… (Cmd+Enter creates the tasks)'
                 : createMode === 'bug'
@@ -770,7 +796,7 @@ function App(): JSX.Element {
                 className="chatSend"
                 aria-label={createMode === 'prd' ? 'Generate tasks from PRD' : 'Create task'}
                 title={createMode === 'prd' ? 'Generate tasks from PRD' : 'Create task'}
-                disabled={!createText.trim() || prdSplitting}
+                disabled={!createText.trim() || createBusy !== null || prdSplitting}
                 onClick={sendCreate}
               >
                 <ArrowUpIcon />
@@ -918,7 +944,7 @@ function App(): JSX.Element {
           <div className="actions">
             {draft.status === 'backlog' && (
               <Action
-                label={generatingIds.includes(draft.id) ? 'Drafting PRD…' : 'Generate PRD'}
+                label={generatingIds.includes(draft.id) ? 'Drafting PRD…' : draft.description.trim() ? 'Regenerate PRD' : 'Generate PRD'}
                 onClick={() => sendAction(draft, 'generate-spec')}
                 primary
                 disabled={!draft.brief.trim() || generatingIds.includes(draft.id)}

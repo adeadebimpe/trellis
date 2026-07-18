@@ -840,9 +840,9 @@ body.vscode-light .card:hover {
   display: block;
 }
 
-.prio-high svg { color: var(--text); }
-.prio-medium svg { color: var(--muted); }
-.prio-low svg { color: var(--subtle); }
+.prio-high svg { color: var(--red); }
+.prio-medium svg { color: var(--amber); }
+.prio-low svg { color: var(--blue); }
 
 .cardTitle {
   display: -webkit-box;
@@ -1581,15 +1581,17 @@ textarea::placeholder {
   align-items: center;
   background: transparent;
   border: 0;
-  color: var(--body-text);
+  color: var(--muted);
   cursor: pointer;
   display: flex;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   gap: 6px;
+  letter-spacing: 0.04em;
   margin: 4px 0 12px;
   padding: 6px 0;
   text-align: left;
+  text-transform: uppercase;
   width: 100%;
 }
 
@@ -1692,9 +1694,11 @@ textarea::placeholder {
   border-bottom: 2px solid transparent;
   color: var(--subtle);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   padding: 0 0 8px;
+  text-transform: uppercase;
 }
 
 .tab:hover {
@@ -1923,4 +1927,24 @@ body[data-host='sidebar'] .expandButton {
   .timelineRow .timelineMessage {
     grid-column: 1 / -1;
   }
+}
+
+.chatStatus {
+  align-items: center;
+  animation: draftingPulse 1.6s ease-in-out infinite;
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.chatStatus svg {
+  animation: chatSpin 1.4s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes chatSpin {
+  to { transform: rotate(360deg); }
 }

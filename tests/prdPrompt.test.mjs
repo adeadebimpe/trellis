@@ -191,13 +191,13 @@ const fallbackPatch = normalizeSpecPatch({ description: 'x' }, task, project);
 assert.deepEqual(fallbackPatch.relevantFiles, task.relevantFiles);
 assert.equal(fallbackPatch.title, undefined);
 
-const longTitlePatch = normalizeSpecPatch({ description: 'x', title: 'a'.repeat(100) }, task, project);
+const longTitlePatch = normalizeSpecPatch({ description: 'x', title: 'a'.repeat(TITLE_MAX_LENGTH + 60) }, task, project);
 assert.ok(longTitlePatch.title.length <= TITLE_MAX_LENGTH);
 assert.ok(longTitlePatch.title.endsWith('…'));
 assert.ok(!longTitlePatch.title.includes('...'));
 
 // Word-boundary clipping: a long multi-word entry clips at a space, never mid-word.
-const words = 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
+const words = 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu '.repeat(4).trim();
 const clippedWords = clipTitle(words);
 assert.ok(clippedWords.length <= TITLE_MAX_LENGTH);
 assert.ok(clippedWords.endsWith('…'));
@@ -210,7 +210,7 @@ const exact = 'x'.repeat(TITLE_MAX_LENGTH);
 assert.equal(clipTitle(exact), exact);
 
 // A first word longer than the limit hard-clips but still fits with the ellipsis.
-const longWord = 'supercalifragilisticexpialidocious'.repeat(3);
+const longWord = 'supercalifragilisticexpialidocious'.repeat(5);
 const clippedWord = clipTitle(longWord);
 assert.equal(clippedWord.length, TITLE_MAX_LENGTH);
 assert.ok(clippedWord.endsWith('…'));
@@ -224,7 +224,7 @@ const short = deriveTaskTitle({ id: 'TASK-902', title: '', brief: 'Add dark mode
 assert.equal(short, 'dark mode toggle');
 
 // Long derived titles from the composer path are word-boundary clipped too.
-const cleanedBrief = 'short titles based on entry for new task, and titles should fit using ellipsis and maybe a tooltip';
+const cleanedBrief = 'short titles based on entry for new task, and titles should fit using ellipsis and maybe a tooltip, repeated until the derived title comfortably exceeds the generous ceiling we now allow';
 const longBrief = deriveTaskTitle({ id: 'TASK-903', title: '', brief: `Create ${cleanedBrief}`, description: '' });
 assert.ok(longBrief.length <= TITLE_MAX_LENGTH);
 assert.ok(longBrief.endsWith('…'));

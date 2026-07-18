@@ -24,7 +24,8 @@ export function getPrdSourceBrief(task: AgentBoardTask): string {
   return `${text}\n\n${context}`.trim();
 }
 
-export const TITLE_MAX_LENGTH = 60;
+// Generous ceiling: detail titles show in full; board cards clamp visually.
+export const TITLE_MAX_LENGTH = 140;
 
 // Clip display titles at a word boundary, appending a single '…' so the result
 // (ellipsis included) never exceeds maxLength. Falls back to a hard clip when
