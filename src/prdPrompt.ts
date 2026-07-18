@@ -12,7 +12,16 @@ export interface AgentSpecPatch {
 }
 
 export function getPrdSourceBrief(task: AgentBoardTask): string {
-  return String(task.brief ?? '').trim();
+  const text = String(task.intake?.text ?? task.brief ?? '').trim();
+  if (!task.intake) return text;
+  const context = [
+    `Processing intent: ${task.intake.intent}`,
+    task.intake.sourceUrl ? `Source URL (provenance only; do not fetch): ${task.intake.sourceUrl}` : '',
+    task.intake.attachments.length
+      ? `Attachments: ${task.intake.attachments.map((item) => `${item.name} (${item.path})`).join(', ')}`
+      : ''
+  ].filter(Boolean).join('\n');
+  return `${text}\n\n${context}`.trim();
 }
 
 export const TITLE_MAX_LENGTH = 60;
@@ -69,6 +78,9 @@ export function buildPrdPrompt(task: AgentBoardTask, project: ProjectContext): s
     '- Do not treat task ids, task JSON fields, Trellis internals, or projectContext text as the feature request.',
     '- Do not write about updating task JSON, TASK-ID files, activity logs, or Trellis unless the userBrief explicitly asks to build Trellis itself.',
     '- If userBrief is empty or unclear, say what clarification is needed inside the returned description and keep the checklists focused on clarifying the task.',
+    '- When a processing intent is present: single-task scopes one implementation task; define focuses the draft on requirements gaps; investigate produces a diagnostic task; decompose identifies a coherent first task and records follow-on task boundaries in the description because this response creates one editable draft.',
+    '- Source URLs are provenance only. Never fetch them or assume their contents.',
+    '- Attachment paths are user-provided evidence. Include relevant inspection steps without inventing their contents.',
     '- Keep the PRD specific to the requested product behavior, user outcome, edge cases, and validation.',
     '- Explore the repository you are running in and list the existing files and paths most relevant to implementing this brief in relevantFiles, so the implementing agent starts in the right place.',
     '',

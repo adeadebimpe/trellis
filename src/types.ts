@@ -12,6 +12,23 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 export type Priority = 'high' | 'medium' | 'low';
+export type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
+
+export interface IntakeAttachment {
+  name: string;
+  path: string;
+  mediaType: string;
+  size: number;
+}
+
+export interface TaskIntake {
+  method: 'manual' | 'agent' | 'cli' | 'api' | 'plugin' | 'webhook' | 'repository-signal';
+  text: string;
+  sourceUrl?: string;
+  attachments: IntakeAttachment[];
+  intent: IntakeIntent;
+  createdAt: string;
+}
 
 export interface ActivityEntry {
   timestamp: string;
@@ -76,6 +93,7 @@ export interface AgentBoardTask {
   claimedAt: string;
   lastValidation: ValidationRun | null;
   shipResult: ShipResult | null;
+  intake?: TaskIntake;
   lastUpdated: string;
   [key: string]: unknown;
 }

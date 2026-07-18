@@ -5,6 +5,7 @@ import './styles.css';
 type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 type Priority = 'high' | 'medium' | 'low';
+type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
 
 interface ActivityEntry {
   timestamp: string;
@@ -58,6 +59,14 @@ interface Task {
     mergedInto?: string;
     mergeCommit?: string;
   } | null;
+  intake?: {
+    method: 'manual' | 'agent' | 'cli' | 'api' | 'plugin' | 'webhook' | 'repository-signal';
+    text: string;
+    sourceUrl?: string;
+    attachments: Array<{ name: string; path: string; mediaType: string; size: number }>;
+    intent: IntakeIntent;
+    createdAt: string;
+  };
   lastUpdated: string;
 }
 
@@ -149,6 +158,13 @@ function App(): JSX.Element {
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerText, setComposerText] = useState('');
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeStep, setIntakeStep] = useState<1 | 2>(1);
+  const [intakeText, setIntakeText] = useState('');
+  const [intakeUrl, setIntakeUrl] = useState('');
+  const [intakeIntent, setIntakeIntent] = useState<IntakeIntent>('single-task');
+  const [intakeFiles, setIntakeFiles] = useState<Array<{ name: string; path: string }>>([]);
+  const [intakeSubmitting, setIntakeSubmitting] = useState(false);
   const [generatingIds, setGeneratingIds] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
@@ -205,6 +221,7 @@ function App(): JSX.Element {
         setSaveState('error');
         setProjectSaveState('error');
         setReviewSubmitting(false);
+        setIntakeSubmitting(false);
       }
       if (event.data.type === 'saved-project') {
         if (projectEditVersion.current === projectSentVersion.current) {
@@ -240,6 +257,19 @@ function App(): JSX.Element {
       if (event.data.type === 'task-deleted') {
         setSelectedId(null);
         setDraft(null);
+      }
+      if (event.data.type === 'intake-files-selected') {
+        setIntakeFiles(event.data.files ?? []);
+      }
+      if (event.data.type === 'intake-created') {
+        setIntakeSubmitting(false);
+        setIntakeOpen(false);
+        setIntakeStep(1);
+        setIntakeText('');
+        setIntakeUrl('');
+        setIntakeIntent('single-task');
+        setIntakeFiles([]);
+        setSelectedId(event.data.id);
       }
       if (event.data.type === 'fresh-started') {
         setSelectedId(null);
@@ -439,7 +469,7 @@ function App(): JSX.Element {
               </>
             )}
           </div>
-          <button className="primary" onClick={() => setComposerOpen((open) => !open)}>New task</button>
+          <button className="primary" onClick={() => setIntakeOpen(true)}>New task</button>
         </div>
       </header>
 
@@ -448,7 +478,7 @@ function App(): JSX.Element {
           <div>
             <h2>No tasks yet</h2>
             <p>Describe what you want built. Trellis drafts the PRD, assigns an agent, and queues it on the board.</p>
-            <button className="primary" onClick={() => setComposerOpen(true)}>New task</button>
+            <button className="primary" onClick={() => setIntakeOpen(true)}>New task</button>
           </div>
         </section>
       ) : (
@@ -522,6 +552,82 @@ function App(): JSX.Element {
           );
         })}
       </section>
+      )}
+
+      {intakeOpen && !draft && (
+        <div className="intakeBackdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !intakeSubmitting) setIntakeOpen(false);
+        }}>
+          <section className="intakePanel" role="dialog" aria-modal="true" aria-labelledby="intake-title">
+            <header className="intakeHeader">
+              <div>
+                <p className="eyebrow">New intake · {intakeStep === 1 ? 'Capture' : 'Review'}</p>
+                <h2 id="intake-title">Turn source material into work</h2>
+              </div>
+              <button className="ghost" disabled={intakeSubmitting} onClick={() => setIntakeOpen(false)}>Close</button>
+            </header>
+
+            {intakeStep === 1 ? (
+              <div className="intakeBody">
+                <label className="intakeField">
+                  <span>Source material</span>
+                  <textarea autoFocus rows={8} value={intakeText} onChange={(event) => setIntakeText(event.target.value)} placeholder="Paste a ticket, PRD, bug report, or describe what needs to happen…" />
+                  <small>Paste from any tool. Trellis does not connect to or synchronize with it.</small>
+                </label>
+                <label className="intakeField">
+                  <span>Source URL <em>optional</em></span>
+                  <input type="url" value={intakeUrl} onChange={(event) => setIntakeUrl(event.target.value)} placeholder="https://…" />
+                  <small>Stored as provenance only. Trellis will never fetch this URL.</small>
+                </label>
+                <div className="intakeField">
+                  <span>Images and files <em>optional</em></span>
+                  <button className="attachmentPicker" onClick={() => vscode.postMessage({ type: 'select-intake-files' })}>
+                    <strong>{intakeFiles.length ? `${intakeFiles.length} selected` : 'Choose files'}</strong>
+                    <small>Screenshots, images, PDF, Markdown, text, or logs</small>
+                  </button>
+                  {intakeFiles.length > 0 && <ul className="attachmentList">{intakeFiles.map((file) => <li key={file.path}>{file.name}</li>)}</ul>}
+                </div>
+                <fieldset className="intentGrid">
+                  <legend>What should Trellis do?</legend>
+                  {([
+                    ['single-task', 'One task', 'Shape this into a focused implementation draft.'],
+                    ['decompose', 'Break it down', 'Find coherent task boundaries and start with the first.'],
+                    ['define', 'Help define it', 'Surface gaps and turn the idea into requirements.'],
+                    ['investigate', 'Investigate', 'Create a diagnostic task before choosing a fix.']
+                  ] as Array<[IntakeIntent, string, string]>).map(([value, label, hint]) => (
+                    <label className={`intentCard${intakeIntent === value ? ' intentCardSelected' : ''}`} key={value}>
+                      <input type="radio" name="intake-intent" value={value} checked={intakeIntent === value} onChange={() => setIntakeIntent(value)} />
+                      <strong>{label}</strong><small>{hint}</small>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+            ) : (
+              <div className="intakeBody intakeReview">
+                <p className="reviewKicker">Nothing starts until you approve the generated draft.</p>
+                <dl>
+                  <div><dt>Intent</dt><dd>{intakeIntent.replace('-', ' ')}</dd></div>
+                  <div><dt>Source</dt><dd>{intakeUrl || 'No external URL'}</dd></div>
+                  <div><dt>Attachments</dt><dd>{intakeFiles.length || 'None'}</dd></div>
+                </dl>
+                <div className="reviewExcerpt"><span>Submitted material</span><p>{intakeText}</p></div>
+              </div>
+            )}
+
+            <footer className="intakeActions">
+              {intakeStep === 2 && <button className="ghost" disabled={intakeSubmitting} onClick={() => setIntakeStep(1)}>Back</button>}
+              <span>The result stays in Backlog for editing.</span>
+              {intakeStep === 1 ? (
+                <button className="primary" disabled={!intakeText.trim()} onClick={() => setIntakeStep(2)}>Review intake</button>
+              ) : (
+                <button className="primary" disabled={intakeSubmitting} onClick={() => {
+                  setIntakeSubmitting(true);
+                  vscode.postMessage({ type: 'create-intake', intake: { text: intakeText, sourceUrl: intakeUrl, intent: intakeIntent, attachmentPaths: intakeFiles.map((file) => file.path) } });
+                }}>{intakeSubmitting ? 'Drafting…' : 'Create editable draft'}</button>
+              )}
+            </footer>
+          </section>
+        </div>
       )}
 
       {state && composerOpen && !draft && (
