@@ -262,8 +262,8 @@ export class AgentBoardStorage {
     await this.prepareAgentFiles();
     await this.withTaskLock(id, 'vscode', async () => {
       const task = await this.readJson<AgentBoardTask>(this.taskUri(id));
-      if (task.status !== 'done') {
-        throw new Error(`Only done tasks can be archived. ${id} is ${task.status}.`);
+      if (task.status !== 'done' && task.status !== 'merged') {
+        throw new Error(`Only done or merged tasks can be archived. ${id} is ${task.status}.`);
       }
       await vscode.workspace.fs.rename(this.taskUri(id), vscode.Uri.joinPath(this.boardDir, 'archive', `${id}.json`), { overwrite: true });
     });
