@@ -28,6 +28,7 @@
       "test",
       "test:archive",
       "test:gitignore",
+      "test:onboarding",
       "test:prd",
       "test:scripts",
       "typecheck",
@@ -52,7 +53,7 @@
       "npm run test",
       "npm run typecheck"
     ],
-    "lastInferred": "2026-07-18T18:30:49.591Z"
+    "lastInferred": "2026-07-18T20:03:26.160Z"
   },
-  "lastUpdated": "2026-07-18T18:30:49.591Z"
+  "lastUpdated": "2026-07-18T20:03:26.160Z"
 }

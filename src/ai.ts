@@ -3,8 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AgentBoardTask, ProjectContext } from './types';
-import { AgentSpecPatch, buildPrdPrompt, normalizeSpecPatch } from './prdPrompt';
+import { AgentBoardTask, Priority, ProjectContext } from './types';
+import { AgentSpecPatch, buildPrdPrompt, clipTitle, normalizeSpecPatch } from './prdPrompt';
 
 const OPENAI_KEY = 'agentBoard.openaiApiKey';
 const AI_PROVIDER_KEY = 'agentBoard.aiProvider';
@@ -144,6 +144,127 @@ export async function generateAgentSpecWithAi(
   }
 
   return callOpenAi(settings, task, project);
+}
+
+export interface PrdTaskSeed {
+  title: string;
+  brief: string;
+  description: string;
+  acceptanceCriteria: string[];
+  priority: Priority;
+}
+
+// "From PRD" mode: split a pasted PRD into independent, implementation-ready tasks.
+export async function generateTasksFromPrd(
+  context: vscode.ExtensionContext,
+  prdText: string,
+  workspacePath: string
+): Promise<PrdTaskSeed[]> {
+  const provider = await resolveSpecProvider(context);
+  const prompt = buildPrdSplitPrompt(prdText);
+  let raw: string;
+  if (provider === 'codex-cli') {
+    const tempDir = await mkdtemp(join(tmpdir(), 'agent-board-codex-'));
+    const outputPath = join(tempDir, 'tasks.json');
+    try {
+      const stdout = await runCli('codex', ['exec', '--skip-git-repo-check', '--output-last-message', outputPath, prompt], {
+        cwd: workspacePath,
+        timeout: CLI_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024 * 5
+      });
+      raw = await readFile(outputPath, 'utf8').catch(() => stdout);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  } else if (provider === 'claude-code') {
+    raw = await runCli('claude', ['-p', '--output-format', 'text', prompt], {
+      cwd: workspacePath,
+      timeout: CLI_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024 * 5
+    });
+  } else {
+    const settings = await getAiSettings(context);
+    if (!settings) {
+      throw new Error('Configure an AI provider before generating tasks from a PRD.');
+    }
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: settings.model, input: prompt })
+    });
+    const json = await response.json() as Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(extractErrorMessage(json) ?? `OpenAI request failed with status ${response.status}.`);
+    }
+    raw = extractOutputText(json);
+  }
+  return normalizeTaskSeeds(parseJsonArray(raw));
+}
+
+function buildPrdSplitPrompt(prdText: string): string {
+  return [
+    'You are a planning agent. Split the PRD below into independent, implementation-ready coding tasks.',
+    'Return a strict JSON array only. No markdown, commentary, or code fences.',
+    '',
+    'Rules:',
+    '- Create between 1 and 8 tasks. Prefer fewer, coherent tasks over many fragments.',
+    '- Each task must be independently implementable and verifiable.',
+    '- Order the array so earlier tasks unblock later ones.',
+    '- title: short specific name, max 60 characters, no trailing punctuation.',
+    '- brief: one or two sentences describing what to build, self-contained.',
+    '- description: the implementation-ready details drawn from the PRD for this task only.',
+    '- acceptanceCriteria: concrete, testable statements.',
+    '- priority: "high", "medium", or "low" based on how foundational the task is.',
+    '',
+    'Return this exact JSON shape:',
+    '[{"title":"string","brief":"string","description":"string","acceptanceCriteria":["string"],"priority":"medium"}]',
+    '',
+    'PRD:',
+    prdText.slice(0, 24000)
+  ].join('\n');
+}
+
+function parseJsonArray(text: string): unknown[] {
+  const trimmed = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // fall through to bracket extraction
+  }
+  const start = trimmed.indexOf('[');
+  const end = trimmed.lastIndexOf(']');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('The AI response was not a valid JSON array of tasks.');
+  }
+  const parsed = JSON.parse(trimmed.slice(start, end + 1));
+  if (!Array.isArray(parsed)) {
+    throw new Error('The AI response was not a valid JSON array of tasks.');
+  }
+  return parsed;
+}
+
+function normalizeTaskSeeds(items: unknown[]): PrdTaskSeed[] {
+  const seeds: PrdTaskSeed[] = [];
+  for (const item of items.slice(0, 8)) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === 'string' ? record.title.replace(/[.!?]+$/g, '').trim() : '';
+    const brief = typeof record.brief === 'string' ? record.brief.trim() : '';
+    if (!title && !brief) continue;
+    const criteria = Array.isArray(record.acceptanceCriteria)
+      ? record.acceptanceCriteria.map((entry) => String(entry).trim()).filter(Boolean)
+      : [];
+    const priority: Priority = record.priority === 'high' || record.priority === 'low' ? record.priority : 'medium';
+    seeds.push({
+      title: clipTitle(title || brief),
+      brief: brief || title,
+      description: typeof record.description === 'string' ? record.description.trim() : '',
+      acceptanceCriteria: criteria,
+      priority
+    });
+  }
+  return seeds;
 }
 
 async function resolveSpecProvider(context: vscode.ExtensionContext): Promise<SpecProvider> {

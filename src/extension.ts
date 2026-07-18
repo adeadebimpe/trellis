@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
-import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel, SpecProvider } from './ai';
+import { clearAi, configureAi, configureSpecProvider, generateAgentSpecWithAi, generateTasksFromPrd, getSpecProvider, resetAiSettings, setSpecProvider, specProviderLabel, SpecProvider } from './ai';
 import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, signInCodexCli } from './cliAuth';
 import { isSetupComplete } from './onboarding';
 import { shipTask } from './ship';
@@ -52,6 +52,21 @@ async function pickAutoAgent(): Promise<AssignedAgent> {
     return preferred;
   }
   return available[0] ?? 'unassigned';
+}
+
+// Honors an explicit agent choice from the Create Task composer when that CLI
+// is actually available; otherwise falls back to the automatic pick.
+async function resolveRequestedAgent(requested: unknown): Promise<AssignedAgent> {
+  if (requested === 'claude' || requested === 'codex') {
+    const available = await detectAvailableAgents();
+    if (available.includes(requested)) {
+      return requested;
+    }
+  }
+  if (requested === 'unassigned') {
+    return 'unassigned';
+  }
+  return pickAutoAgent();
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -261,8 +276,11 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         }
         const allowedIntents = new Set(['single-task', 'decompose', 'define', 'investigate']);
         const intent = allowedIntents.has(message.intake?.intent) ? message.intake.intent : 'single-task';
-        const autoAgent = await pickAutoAgent();
+        const autoAgent = await resolveRequestedAgent(message.agent);
         const now = new Date().toISOString();
+        const mentions: string[] = Array.isArray(message.mentions)
+          ? Array.from(new Set<string>((message.mentions as unknown[]).map((entry) => String(entry).trim()).filter(Boolean))).slice(0, 20)
+          : [];
         const task = await storage.createTask({
           brief: text,
           assignedAgent: autoAgent,
@@ -272,11 +290,18 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         const paths = Array.isArray(message.intake?.attachmentPaths)
           ? message.intake.attachmentPaths.map(String).filter(Boolean)
           : [];
-        const attachments = await storage.copyIntakeAttachments(task.id, paths);
+        const copied = await storage.copyIntakeAttachments(task.id, paths);
+        // @mentioned workspace files ride along as intake attachments so the PRD
+        // prompt treats them as user-provided evidence (never fabricated content).
+        const attachments = [
+          ...copied,
+          ...mentions.map((path) => ({ name: path.split('/').pop() ?? path, path, mediaType: 'text/x-workspace-file', size: 0 }))
+        ];
         const withIntake = await storage.saveTask({
           task: {
             id: task.id,
             intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments, intent, createdAt: now },
+            relevantFiles: mentions,
             activityLog: [
               ...(task.activityLog ?? []),
               { timestamp: now, actor: 'human', message: `Submitted ${intent} intake with ${attachments.length} attachment(s) for draft review.` }
@@ -288,6 +313,55 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await runGenerateSpecAction(context, task.id, withIntake.lastUpdated, false);
         await postState();
         webview.postMessage({ type: 'intake-created', id: task.id });
+        break;
+      }
+      case 'workspace-files': {
+        const uris = await vscode.workspace.findFiles(
+          '**/*',
+          '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.agent-board/**,**/*.vsix,**/*.png,**/*.jpg}',
+          500
+        );
+        const files = uris.map((uri) => vscode.workspace.asRelativePath(uri, false)).sort((a, b) => a.localeCompare(b));
+        webview.postMessage({ type: 'workspace-files', files });
+        break;
+      }
+      case 'create-from-prd': {
+        const prd = String(message.prd ?? '').trim();
+        if (!prd) {
+          throw new Error('Paste a PRD before generating tasks.');
+        }
+        const agent = await resolveRequestedAgent(message.agent);
+        webview.postMessage({ type: 'prd-split-started' });
+        try {
+          const seeds = await generateTasksFromPrd(context, prd, storage.root.fsPath);
+          if (!seeds.length) {
+            throw new Error('The agent could not derive any tasks from that PRD.');
+          }
+          const now = new Date().toISOString();
+          for (const seed of seeds) {
+            const task = await storage.createTask({ brief: seed.brief, assignedAgent: agent, qaAgent: agent });
+            await storage.saveTask({
+              task: {
+                id: task.id,
+                title: seed.title,
+                description: seed.description,
+                acceptanceCriteria: seed.acceptanceCriteria,
+                priority: seed.priority,
+                // The PRD split already yields an implementation-ready spec.
+                status: 'ready-for-agent',
+                activityLog: [
+                  ...(task.activityLog ?? []),
+                  { timestamp: now, actor: 'vscode', message: 'Created from PRD split.' }
+                ]
+              },
+              expectedLastUpdated: task.lastUpdated
+            });
+          }
+          await postState();
+          vscode.window.showInformationMessage(`Trellis created ${seeds.length} task(s) from the PRD.`);
+        } finally {
+          webview.postMessage({ type: 'prd-split-done' });
+        }
         break;
       }
       case 'save-task':
