@@ -726,11 +726,14 @@ function App(): JSX.Element {
               </p>
             )}
             {mentionQuery !== null && mentionMatches.length > 0 && (
-              <div className="mentionMenu" role="listbox" aria-label="Workspace files">
-                {mentionMatches.map((file) => (
-                  <button key={file} role="option" aria-selected="false" onClick={() => insertMention(file)}>{file}</button>
-                ))}
-              </div>
+              <>
+                <div className="menuOverlay" onClick={() => setMentionQuery(null)} />
+                <div className="mentionMenu" role="listbox" aria-label="Workspace files">
+                  {mentionMatches.map((file) => (
+                    <button key={file} role="option" aria-selected="false" onClick={() => insertMention(file)}>{file}</button>
+                  ))}
+                </div>
+              </>
             )}
             <textarea
               rows={1}
@@ -744,6 +747,8 @@ function App(): JSX.Element {
                   : 'Describe your task (@mention for context)'}
               value={createText}
               ref={autoGrow}
+              onMouseDown={() => setMentionQuery(null)}
+              onFocus={() => setMentionQuery(null)}
               onChange={(event) => {
                 autoGrow(event.target);
                 setCreateText(event.target.value);
