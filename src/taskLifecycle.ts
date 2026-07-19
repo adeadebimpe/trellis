@@ -11,6 +11,8 @@ export function assertBoardActionAllowed(task: AgentBoardTask, action: string): 
       throw new Error('Start QA through the assigned QA agent so Trellis can create and record a QA claim.');
     case 'pass-qa':
       throw new Error('Pass QA through the agent workflow so Trellis can verify fresh QA evidence.');
+    case 'fail-qa':
+      throw new Error('Fail QA through the active QA workflow so Trellis can verify QA ownership.');
     case 'mark-done':
       if (task.status !== 'human-review') throw new Error('Only a task in Human Review can be marked done.');
       return;
@@ -26,6 +28,7 @@ export function assertStatusChangeAllowed(task: AgentBoardTask, nextStatus: Agen
     'ready-for-qa': 'mark-ready-qa',
     'qa-running': 'start-qa',
     'human-review': 'pass-qa',
+    'failed-qa': 'fail-qa',
     done: 'mark-done'
   };
   const action = guardedAction[nextStatus];

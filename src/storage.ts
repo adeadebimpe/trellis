@@ -7,6 +7,7 @@ import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
 import { selectDoneTasksToArchive } from './archive';
 import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
+import { assertTaskId, assertTaskLockKey } from './taskIds';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
 const execFileAsync = promisify(execFile);
@@ -181,6 +182,7 @@ export class AgentBoardStorage {
   }
 
   async copyIntakeAttachments(taskId: string, sourcePaths: string[]): Promise<IntakeAttachment[]> {
+    assertTaskId(taskId);
     if (!sourcePaths.length) return [];
     const destinationDir = vscode.Uri.joinPath(this.boardDir, 'attachments', taskId);
     await this.ensureDir(destinationDir);
@@ -237,6 +239,7 @@ export class AgentBoardStorage {
   }
 
   private withTaskLock<T>(key: string, owner: string, fn: () => Promise<T>): Promise<T> {
+    assertTaskLockKey(key);
     return withLock(vscode.Uri.joinPath(this.boardDir, 'locks').fsPath, key, owner, fn);
   }
 
@@ -489,6 +492,7 @@ export class AgentBoardStorage {
   }
 
   private taskUri(id: string): vscode.Uri {
+    assertTaskId(id);
     return vscode.Uri.joinPath(this.boardDir, 'tasks', `${id}.json`);
   }
 
@@ -635,7 +639,13 @@ export class AgentBoardStorage {
     const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(this.boardDir, 'tasks'));
     const tasks = await Promise.all(entries
       .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.json'))
-      .map(([name]) => this.readJson<AgentBoardTask>(vscode.Uri.joinPath(this.boardDir, 'tasks', name))));
+      .map(async ([name]) => {
+        const fileId = name.slice(0, -'.json'.length);
+        assertTaskId(fileId);
+        const task = await this.readJson<AgentBoardTask>(vscode.Uri.joinPath(this.boardDir, 'tasks', name));
+        if (task.id !== fileId) throw new Error(`Task file ${name} contains mismatched id ${task.id}.`);
+        return task;
+      }));
     return tasks.map((task) => this.normalizeTask(task)).sort((a, b) => a.id.localeCompare(b.id));
   }
 
@@ -685,8 +695,9 @@ export class AgentBoardStorage {
   private async loadTasksOrEmpty(): Promise<AgentBoardTask[]> {
     try {
       return await this.loadTasks();
-    } catch {
-      return [];
+    } catch (error) {
+      if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') return [];
+      throw error;
     }
   }
 

@@ -16,6 +16,7 @@ assert.throws(() => assertBoardActionAllowed(task, 'mark-ready-qa'), /agent work
 assert.throws(() => assertStatusChangeAllowed(task, 'ready-for-qa'), /agent workflow/);
 assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'ready-for-agent' }, 'building'), /assigned agent/);
 assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'qa-running' }, 'human-review'), /agent workflow/);
+assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'qa-running' }, 'failed-qa'), /active QA workflow/);
 assert.doesNotThrow(() => assertStatusChangeAllowed({ ...task, status: 'human-review' }, 'done'));
 assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'building' }, 'done'), /Human Review/);
 

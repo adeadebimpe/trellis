@@ -65,12 +65,25 @@ export function boardLibScript(): string {
 // git worktree's .agent-board/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 const LOCK_TIMEOUT_MS = 10000;
 const LOCK_STALE_MS = 30000;
+const LOCK_HEARTBEAT_MS = 5000;
+const TASK_ID_PATTERN = /^TASK-\\d{3,}$/;
+
+export function assertTaskId(taskId) {
+  if (!TASK_ID_PATTERN.test(String(taskId))) {
+    throw fail(1, 'Invalid task ID: ' + taskId + '. Expected TASK followed by at least three digits.');
+  }
+  return taskId;
+}
+
+function assertLockKey(key) {
+  if (key !== '_board') assertTaskId(key);
+}
 
 export function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -132,6 +145,7 @@ export function resolveMainRoot(startDir = process.cwd()) {
 }
 
 export function taskPath(mainRoot, taskId) {
+  assertTaskId(taskId);
   return join(mainRoot, '.agent-board', 'tasks', taskId + '.json');
 }
 
@@ -150,6 +164,7 @@ function sleep(ms) {
 }
 
 export async function acquireLock(mainRoot, key, owner) {
+  assertLockKey(key);
   const locksDir = join(mainRoot, '.agent-board', 'locks');
   mkdirSync(locksDir, { recursive: true });
   const lockDir = join(locksDir, key);
@@ -157,8 +172,9 @@ export async function acquireLock(mainRoot, key, owner) {
   while (true) {
     try {
       mkdirSync(lockDir);
-      writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ owner, pid: process.pid, acquiredAt: new Date().toISOString() }));
-      return lockDir;
+      const token = randomUUID();
+      writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ owner, token, pid: process.pid, acquiredAt: new Date().toISOString() }));
+      return { lockDir, token };
     } catch (error) {
       if (error.code !== 'EEXIST') {
         throw error;
@@ -169,9 +185,15 @@ export async function acquireLock(mainRoot, key, owner) {
       } catch {
         continue; // Lock vanished between mkdir and stat; retry immediately.
       }
-      if (ageMs > LOCK_STALE_MS) {
+      let lockOwner = null;
+      try {
+        lockOwner = JSON.parse(readFileSync(join(lockDir, 'owner.json'), 'utf8'));
+      } catch {
+        // An owner that crashed before writing metadata is stealable once stale.
+      }
+      if (ageMs > LOCK_STALE_MS && !isProcessAlive(lockOwner?.pid)) {
         rmSync(lockDir, { recursive: true, force: true });
-        continue; // Exactly one stealer wins the next mkdir.
+        continue;
       }
       if (Date.now() > deadline) {
         let holder = 'unknown';
@@ -187,16 +209,44 @@ export async function acquireLock(mainRoot, key, owner) {
   }
 }
 
-export function releaseLock(lockDir) {
-  rmSync(lockDir, { recursive: true, force: true });
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
+  }
+}
+
+function stillOwnsLock(lock) {
+  try {
+    return JSON.parse(readFileSync(join(lock.lockDir, 'owner.json'), 'utf8')).token === lock.token;
+  } catch {
+    return false;
+  }
+}
+
+export function refreshLock(lock) {
+  if (!stillOwnsLock(lock)) return false;
+  const now = new Date();
+  utimesSync(lock.lockDir, now, now);
+  return true;
+}
+
+export function releaseLock(lock) {
+  if (stillOwnsLock(lock)) rmSync(lock.lockDir, { recursive: true, force: true });
 }
 
 export async function withTaskLock(mainRoot, key, owner, fn) {
-  const lockDir = await acquireLock(mainRoot, key, owner);
+  const lock = await acquireLock(mainRoot, key, owner);
+  const heartbeat = setInterval(() => refreshLock(lock), LOCK_HEARTBEAT_MS);
+  heartbeat.unref();
   try {
     return await fn();
   } finally {
-    releaseLock(lockDir);
+    clearInterval(heartbeat);
+    releaseLock(lock);
   }
 }
 
@@ -264,7 +314,7 @@ export function claimNextTaskScript(): string {
   return `#!/usr/bin/env node
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { assertTaskId, ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const agent = process.argv[2];
@@ -277,18 +327,24 @@ await runScript(async () => {
   const priorityRank = { high: 0, medium: 1, low: 2 };
 
   const files = (await readdir(tasksDir)).filter((file) => file.endsWith('.json'));
-  const tasks = await Promise.all(files.map((file) => readJson(join(tasksDir, file))));
+  const tasks = await Promise.all(files.map(async (file) => {
+    const id = file.slice(0, -'.json'.length);
+    assertTaskId(id);
+    const task = await readJson(join(tasksDir, file));
+    if (task.id !== id) throw fail(1, 'Task file ' + file + ' contains mismatched id ' + task.id + '.');
+    return { task, path: join(tasksDir, file) };
+  }));
 
   const candidates = tasks
-    .filter((task) => task.status === 'ready-for-agent' && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
+    .filter(({ task }) => task.status === 'ready-for-agent' && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
     .sort((a, b) => {
-      const priorityDelta = (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99);
-      return priorityDelta || String(a.id).localeCompare(String(b.id));
+      const priorityDelta = (priorityRank[a.task.priority] ?? 99) - (priorityRank[b.task.priority] ?? 99);
+      return priorityDelta || String(a.task.id).localeCompare(String(b.task.id));
     });
 
   for (const candidate of candidates) {
-    const path = taskPath(mainRoot, candidate.id);
-    const claimed = await withTaskLock(mainRoot, candidate.id, agent, async () => {
+    const path = candidate.path;
+    const claimed = await withTaskLock(mainRoot, candidate.task.id, agent, async () => {
       const task = await readJson(path);
       if (task.status !== 'ready-for-agent' || (task.assignedAgent !== agent && task.assignedAgent !== 'unassigned')) {
         return null; // Lost the race; try the next candidate.
@@ -634,12 +690,18 @@ await runScript(async () => {
 
   const task = await withTaskLock(mainRoot, taskId, 'fail-qa', async () => {
     const current = await readJson(path);
+    if (current.status !== 'qa-running') {
+      throw fail(2, 'Task must be qa-running to fail QA. Current status: ' + current.status + '.');
+    }
+    if (!current.qaClaimId) {
+      throw fail(3, 'Task has no active QA claim. Start QA again before recording a failure.');
+    }
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
     current.status = 'failed-qa';
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
-    current.qaNotes.push({ timestamp: now, actor, message: reason });
+    current.qaNotes.push({ timestamp: now, actor, claimId: current.qaClaimId, message: reason });
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
     current.activityLog.push({ timestamp: now, actor, message: 'QA failed: ' + reason });
     await writeJson(path, current);

@@ -114,7 +114,8 @@
     "test:onboarding": "node tests/onboarding.test.mjs",
     "test:scripts": "node tests/scripts.test.mjs",
     "test:lifecycle": "node tests/taskLifecycle.test.mjs",
-    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:scripts && npm run test:lifecycle",
+    "test:locks": "node tests/locks.test.mjs",
+    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:scripts && npm run test:lifecycle && npm run test:locks",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"
