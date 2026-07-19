@@ -618,6 +618,7 @@ select:focus-visible {
 }
 
 .lane {
+  --status-color: #7d8590;
   background: var(--bg);
   border: 0;
   border-radius: 0;
@@ -627,6 +628,16 @@ select:focus-visible {
   flex: 1 0 260px;
   flex-direction: column;
 }
+
+.status-backlog { --status-color: #7d8590; }
+.status-ready-for-agent { --status-color: #e3b341; }
+.status-building { --status-color: #58a6ff; }
+.status-ready-for-qa { --status-color: #39c5cf; }
+.status-qa-running { --status-color: #bc8cff; }
+.status-failed-qa { --status-color: #f85149; }
+.status-human-review { --status-color: #f0883e; }
+.status-done { --status-color: #56d364; }
+.status-merged { --status-color: #2ea043; }
 
 .laneQaWaiting .laneHeader {
   box-shadow: inset 0 -2px color-mix(in srgb, var(--amber) 72%, transparent);
@@ -649,6 +660,15 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.laneDot {
+  background: var(--status-color);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-color) 14%, transparent);
+  flex: 0 0 auto;
+  height: 7px;
+  width: 7px;
 }
 
 .laneHeader h2 {
@@ -799,21 +819,12 @@ body.vscode-light .card:hover {
 }
 
 .statusDot {
-  background: var(--subtle);
+  background: var(--status-color, var(--subtle));
   border-radius: 50%;
   flex-shrink: 0;
   height: 6px;
   width: 6px;
 }
-
-.status-ready-for-agent .statusDot { background: var(--amber); }
-.status-building .statusDot { background: var(--blue); }
-.status-ready-for-qa .statusDot { background: var(--muted); }
-.status-qa-running .statusDot { background: var(--purple); }
-.status-failed-qa .statusDot { background: var(--red); }
-.status-human-review .statusDot { background: var(--amber); }
-.status-done .statusDot { background: var(--green); }
-.status-merged .statusDot { background: var(--green); }
 
 .cardId {
   color: var(--muted);
@@ -876,6 +887,99 @@ body.vscode-light .card:hover {
 .agentChip.agent-unassigned {
   background: var(--badge-bg);
   color: var(--subtle);
+}
+
+.phaseTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.phaseTag {
+  align-items: center;
+  background: var(--agent-chip-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--agent-chip-text);
+  display: inline-flex;
+  font-family: var(--mono-font);
+  font-size: 9px;
+  gap: 4px;
+  line-height: 1.3;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+.phaseTag b {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.phaseTag.agent-codex {
+  background: var(--codex-chip-bg);
+  color: var(--codex-chip-text);
+}
+
+.phaseTag.agent-unassigned {
+  background: var(--badge-bg);
+  color: var(--subtle);
+}
+
+.workflowProgress {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: var(--mono-font);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  gap: 5px;
+  margin-left: 8px;
+}
+
+.workflowProgress i {
+  align-items: center;
+  background: conic-gradient(var(--status-color) var(--workflow-progress), var(--line) 0);
+  border-radius: 50%;
+  display: inline-flex;
+  height: 16px;
+  justify-content: center;
+  position: relative;
+  width: 16px;
+}
+
+.workflowProgress i::after {
+  background: var(--card);
+  border-radius: 50%;
+  content: '';
+  inset: 3px;
+  position: absolute;
+}
+
+.workflowProgress svg {
+  display: none;
+}
+
+.workflowProgressLive {
+  color: var(--status-color);
+}
+
+.workflowProgressLive i::after {
+  display: none;
+}
+
+.workflowProgressLive svg {
+  animation: chatSpin 1.4s linear infinite;
+  color: var(--card);
+  display: block;
+  height: 10px;
+  position: relative;
+  width: 10px;
+  z-index: 1;
 }
 
 .cardClaim {
