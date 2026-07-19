@@ -108,7 +108,8 @@ scaffoldBoard(repo, [
   blankTask('TASK-003', { status: 'ready-for-agent' }),
   blankTask('TASK-004', { status: 'ready-for-agent', priority: 'high' }),
   blankTask('TASK-005', { status: 'ready-for-agent', priority: 'medium' }),
-  blankTask('TASK-006', { status: 'ready-for-agent', branchName: 'invalid branch name' })
+  blankTask('TASK-006', { status: 'ready-for-agent', branchName: 'invalid branch name' }),
+  blankTask('TASK-007', { status: 'ready-for-agent' })
 ]);
 git(repo, ['add', '-A']);
 git(repo, ['commit', '-q', '-m', 'fixture']);
@@ -139,6 +140,11 @@ assert.equal(result.status, 4, 'worktree creation failure must fail the claim');
 assert.equal(readTask(repo, 'TASK-006').status, 'ready-for-agent');
 assert.equal(readTask(repo, 'TASK-006').worktreePath, '');
 writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-006.json'), JSON.stringify({ ...readTask(repo, 'TASK-006'), status: 'backlog' }, null, 2));
+
+// QA failure is only valid for an actively claimed QA run.
+result = runScript(repo, 'fail-qa.mjs', ['TASK-005', 'not actually in QA']);
+assert.equal(result.status, 2, 'fail-qa must reject non-QA tasks');
+assert.equal(readTask(repo, 'TASK-005').status, 'ready-for-agent');
 
 // complete-task refuses without a validation run.
 result = runScript(repo, 'complete-task.mjs', ['TASK-001']);
@@ -210,6 +216,17 @@ result = runScript(repo, 'claim-task.mjs', ['TASK-003', 'claude']);
 assert.equal(result.status, 0, `stale lock must be stolen: ${result.stderr}`);
 assert.equal(readTask(repo, 'TASK-003').status, 'building');
 
+// A stale-looking lock owned by a live process must not be stolen.
+const liveLockDir = join(repo, '.agent-board', 'locks', 'TASK-007');
+mkdirSync(liveLockDir, { recursive: true });
+writeFileSync(join(liveLockDir, 'owner.json'), JSON.stringify({ owner: 'live-agent', token: 'live-token', pid: process.pid }));
+utimesSync(liveLockDir, past, past);
+result = runScript(repo, 'claim-task.mjs', ['TASK-007', 'claude']);
+assert.notEqual(result.status, 0, 'a live owner must retain a stale-looking lock');
+assert.match(result.stderr, /Could not lock/);
+await rm(liveLockDir, { recursive: true, force: true });
+writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-007.json'), JSON.stringify({ ...readTask(repo, 'TASK-007'), status: 'backlog' }, null, 2));
+
 // claim-next picks the highest-priority ready task.
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
 assert.equal(result.status, 0, result.stderr);
@@ -221,6 +238,19 @@ writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-005.json'), JSON.stringi
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(JSON.parse(result.stdout).noTask, true);
+
+// Task IDs cannot escape the task directory.
+const projectBeforeTraversal = readFileSync(join(repo, '.agent-board', 'project.json'), 'utf8');
+result = runScript(repo, 'claim-task.mjs', ['../project', 'claude']);
+assert.equal(result.status, 1, 'path-traversing task IDs must be rejected');
+assert.match(result.stderr, /Invalid task ID/);
+assert.equal(readFileSync(join(repo, '.agent-board', 'project.json'), 'utf8'), projectBeforeTraversal);
+
+// claim-next validates the filename against the embedded ID before selecting work.
+writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-008.json'), JSON.stringify(blankTask('TASK-009', { status: 'ready-for-agent' }), null, 2));
+result = runScript(repo, 'claim-next-task.mjs', ['claude']);
+assert.equal(result.status, 1, 'mismatched filename and embedded task ID must be rejected');
+assert.match(result.stderr, /mismatched id/);
 
 // --- Fixture B: not a git repo ---
 const plain = await mkdtemp(join(tmpdir(), 'agent-board-plain-'));
