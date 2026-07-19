@@ -252,8 +252,8 @@ assert.equal(readFileSync(join(repo, '.agent-board', 'project.json'), 'utf8'), p
 // claim-next validates the filename against the embedded ID before selecting work.
 writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-008.json'), JSON.stringify(blankTask('TASK-009', { status: 'ready-for-agent' }), null, 2));
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
-assert.equal(result.status, 1, 'mismatched filename and embedded task ID must be rejected');
-assert.match(result.stderr, /mismatched id/);
+assert.equal(result.status, 0, 'a mismatched task file must not block healthy scheduling');
+assert.match(result.stderr, /\[SKIP\] TASK-008\.json.*does not match filename/);
 
 // --- Fixture B: not a git repo ---
 const plain = await mkdtemp(join(tmpdir(), 'agent-board-plain-'));
