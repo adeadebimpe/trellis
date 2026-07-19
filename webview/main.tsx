@@ -7,6 +7,7 @@ type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 type Priority = 'high' | 'medium' | 'low';
 type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
+type WorkflowMode = 'branch-per-task' | 'direct-on-main';
 
 interface ActivityEntry {
   timestamp: string;
@@ -47,6 +48,8 @@ interface Task {
   branchName: string;
   worktreePath: string;
   claimedAt: string;
+  workflowMode?: WorkflowMode;
+  claimWarning?: string;
   lastValidation: {
     ranAt: string;
     passed: boolean;
@@ -73,6 +76,7 @@ interface Task {
 
 interface ProjectContext {
   version: 1;
+  workflowMode?: WorkflowMode;
   contextMode?: 'lean' | 'standard' | 'full';
   contextProfiles?: {
     frontend?: string;
@@ -170,6 +174,7 @@ function App(): JSX.Element {
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [setupWorkflowMode, setSetupWorkflowMode] = useState<WorkflowMode>('branch-per-task');
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<'quick' | 'prd' | 'bug'>('quick');
   const [createText, setCreateText] = useState('');
@@ -203,6 +208,10 @@ function App(): JSX.Element {
   useEffect(() => {
     projectDraftRef.current = projectDraft;
   }, [projectDraft]);
+
+  useEffect(() => {
+    if (state?.project.workflowMode) setSetupWorkflowMode(state.project.workflowMode);
+  }, [state?.project.workflowMode]);
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
@@ -496,6 +505,8 @@ function App(): JSX.Element {
   ) ?? [];
 
   if (state && !state.settings.setupComplete) {
+    const chooseSetupMode = (mode: WorkflowMode) => setSetupWorkflowMode(mode);
+    const setupMessage = (type: string) => vscode.postMessage({ type, workflowMode: setupWorkflowMode });
     return (
       <main className="shell">
         <section className="setupScreen" aria-label="Trellis setup">
@@ -505,10 +516,11 @@ function App(): JSX.Element {
             <p>
               Sign in once with the agent CLI you want to use for PRD generation and task execution. Codex and Claude keep their own credentials, so you do not need to sign in again on every refresh.
             </p>
+            <WorkflowModePicker value={setupWorkflowMode} onChange={chooseSetupMode} setup />
             <div className="setupActions">
-              <button className="primary" onClick={() => vscode.postMessage({ type: 'sign-in-codex' })}>Sign in to Codex</button>
-              <button className="primary" onClick={() => vscode.postMessage({ type: 'sign-in-claude' })}>Sign in to Claude</button>
-              <button className="ghost" onClick={() => vscode.postMessage({ type: 'continue-to-board' })}>Continue to board</button>
+              <button className="primary" onClick={() => setupMessage('sign-in-codex')}>Sign in to Codex</button>
+              <button className="primary" onClick={() => setupMessage('sign-in-claude')}>Sign in to Claude</button>
+              <button className="ghost" onClick={() => setupMessage('continue-to-board')}>Continue to board</button>
             </div>
             <p className="setupStatus">PRD generator: {state.settings.specProviderLabel}</p>
           </div>
@@ -986,7 +998,7 @@ function App(): JSX.Element {
               </div>
             )}
             {draft.status === 'human-review' && (
-              <Action label="Ship (PR / merge)" onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
+              <Action label={draft.workflowMode === 'direct-on-main' ? 'Mark complete' : 'Ship (PR / merge)'} onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
             )}
             {draft.status === 'human-review' && (
               <Action label="Mark done" onClick={() => sendAction(draft, 'mark-done')} />
@@ -1160,6 +1172,14 @@ function App(): JSX.Element {
           </div>
 
           <div className="contextBlock">
+            <WorkflowModePicker
+              value={projectDraft.workflowMode ?? 'branch-per-task'}
+              onChange={(workflowMode) => updateProject({ ...projectDraft, workflowMode })}
+            />
+            <p className="fieldHint">Changes apply to new task claims. Existing tasks stay where they started.</p>
+          </div>
+
+          <div className="contextBlock">
             <Field
               label="Project context"
               placeholder="Product overview, architecture, conventions, constraints, links…"
@@ -1178,6 +1198,24 @@ function App(): JSX.Element {
         </section>
       )}
     </main>
+  );
+}
+
+function WorkflowModePicker({ value, onChange, setup = false }: { value: WorkflowMode; onChange: (mode: WorkflowMode) => void; setup?: boolean }): JSX.Element {
+  return (
+    <fieldset className={`workflowPicker ${setup ? 'workflowPickerSetup' : ''}`}>
+      <legend>{setup ? 'Where should agents work?' : 'Agent workspace'}</legend>
+      <div className="workflowOptions">
+        <button type="button" className={`workflowOption ${value === 'branch-per-task' ? 'selected' : ''}`} aria-pressed={value === 'branch-per-task'} onClick={() => onChange('branch-per-task')}>
+          <span className="workflowOptionTop"><strong>Safer workspace</strong><span className="recommendedBadge">Recommended</span></span>
+          <span>Each task gets its own protected workspace. Best for parallel agents and easy review.</span>
+        </button>
+        <button type="button" className={`workflowOption ${value === 'direct-on-main' ? 'selected' : ''}`} aria-pressed={value === 'direct-on-main'} onClick={() => onChange('direct-on-main')}>
+          <span className="workflowOptionTop"><strong>Work on this folder</strong></span>
+          <span>Simpler setup. One agent at a time changes the project you already have open.</span>
+        </button>
+      </div>
+    </fieldset>
   );
 }
 

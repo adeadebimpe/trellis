@@ -21,11 +21,11 @@ Agents should follow this workflow:
 
 1. List \`.agent-board/tasks/\` to see all tasks and read \`.agent-board/project.json\` for project overview, coding rules, agent rules, validation commands, design rules, glossary, and inferred stack context.
 2. Find tasks with status \`ready-for-agent\`. Prefer tasks where \`assignedAgent\` is \`codex\` or \`unassigned\`.
-3. Claim work with \`node .agent-board/scripts/claim-next-task.mjs codex\` (or \`claim-task.mjs TASK-ID codex\`). The script creates a git worktree at \`.agent-board/worktrees/TASK-ID\` on a task branch and prints the task file path and worktree path.
-4. Do ALL code work inside that worktree. Task-state files live only in the MAIN checkout's \`.agent-board/\`; the scripts resolve the main checkout automatically, so run them from anywhere. Never edit \`.agent-board\` files inside a worktree.
+3. Claim work with \`node .agent-board/scripts/claim-next-task.mjs codex\` (or \`claim-task.mjs TASK-ID codex\`). The script follows project.json \`workflowMode\`: it either creates a task worktree or explicitly selects the main checkout.
+4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
 5. Read the task JSON printed by the claim script. Implement only that task.
 6. Update \`agentNotes\`, \`relevantFiles\`, and append clear entries to \`activityLog\` in the main checkout's task file as work progresses.
-7. Commit your work on the task branch inside the worktree.
+7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
 8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\`. This runs the task or project validation commands in the worktree and records evidence on the task. It is required: \`complete-task\` refuses without a passing validation run.
 9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
 10. QA agents claim ready QA work with \`node .agent-board/scripts/start-qa.mjs TASK-ID codex\` (or \`claude\`), review acceptance criteria and changed files in the worktree, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`. Passing QA requires the task to be \`qa-running\`, non-empty \`qaEvidence\`, and a passing validation run.
@@ -44,11 +44,11 @@ Use Trellis when asked to continue project work in this repository.
 
 1. List \`.agent-board/tasks/\` and read \`.agent-board/project.json\` for project overview, rules, validation commands, design rules, glossary, and inferred repo context.
 2. Pick the highest-priority task with status \`ready-for-agent\` assigned to \`claude\` or \`unassigned\`.
-3. Claim it with \`node .agent-board/scripts/claim-next-task.mjs claude\` (or \`claim-task.mjs TASK-ID claude\`). The script creates a git worktree at \`.agent-board/worktrees/TASK-ID\` on a task branch and prints the task file path and worktree path.
-4. Do ALL code work inside that worktree. Task-state files live only in the MAIN checkout's \`.agent-board/\`; the scripts resolve the main checkout automatically. Never edit \`.agent-board\` files inside a worktree.
+3. Claim it with \`node .agent-board/scripts/claim-next-task.mjs claude\` (or \`claim-task.mjs TASK-ID claude\`). The script follows project.json \`workflowMode\`: it either creates a task worktree or explicitly selects the main checkout.
+4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
 5. Build according to the project context, task description, acceptance criteria, constraints, and QA checklist.
 6. Update \`relevantFiles\`, \`agentNotes\`, and append concise \`activityLog\` entries in the main checkout's task file as work progresses.
-7. Commit your work on the task branch inside the worktree.
+7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
 8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\` — it runs the validation commands in the worktree and records evidence. \`complete-task\` refuses without a passing validation run.
 9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
 10. If acting as QA agent, claim ready QA work with \`node .agent-board/scripts/start-qa.mjs TASK-ID claude\`, check acceptance criteria, QA checklist, design QA checklist, and changed files in the worktree, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "reason"\`.
@@ -66,7 +66,7 @@ export function boardLibScript(): string {
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 const LOCK_TIMEOUT_MS = 10000;
@@ -91,8 +91,15 @@ export function codeSnapshot(cwd) {
     git: true,
     head: git(['rev-parse', 'HEAD'], cwd),
     branch: git(['branch', '--show-current'], cwd),
-    clean: git(['status', '--porcelain=v1', '--untracked-files=all'], cwd) === ''
+    clean: meaningfulGitChanges(cwd).length === 0
   };
+}
+
+function meaningfulGitChanges(cwd) {
+  return git(['status', '--porcelain=v1', '--untracked-files=all'], cwd)
+    .split('\\n')
+    .filter(Boolean)
+    .filter((line) => !line.slice(3).startsWith('.agent-board/'));
 }
 
 export function sameSnapshot(left, right) {
@@ -208,7 +215,12 @@ export function slug(value) {
     .slice(0, 48) || 'task';
 }
 
-export function ensureWorktree(mainRoot, task) {
+export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task') {
+  if (workflowMode === 'direct-on-main') {
+    const dirtyCount = isGitRepo(mainRoot) ? meaningfulGitChanges(mainRoot).length : 0;
+    const warning = dirtyCount ? 'Main has ' + dirtyCount + ' uncommitted file(s). Review them before the agent starts.' : '';
+    return { branchName: '', worktreePath: mainRoot, warning, message: 'Claimed task in direct-on-main mode.' + (warning ? ' Warning: ' + warning : '') };
+  }
   const branchName = task.branchName || 'agent-board/' + task.id + '-' + slug(task.title);
   if (!isGitRepo(mainRoot)) {
     return { branchName, worktreePath: '', message: 'Claimed task. No worktree was created because this folder is not a Git repository.' };
@@ -243,6 +255,29 @@ export function ensureWorktree(mainRoot, task) {
   }
 }
 
+export function normalizeWorkflowMode(project) {
+  return project?.workflowMode === 'direct-on-main' ? 'direct-on-main' : 'branch-per-task';
+}
+
+export async function projectWorkflowMode(mainRoot) {
+  try {
+    return normalizeWorkflowMode(await readJson(join(mainRoot, '.agent-board', 'project.json')));
+  } catch {
+    return 'branch-per-task';
+  }
+}
+
+export async function assertDirectModeAvailable(mainRoot, taskId) {
+  const tasksDir = join(mainRoot, '.agent-board', 'tasks');
+  for (const file of await readdir(tasksDir)) {
+    if (!file.endsWith('.json')) continue;
+    const other = await readJson(join(tasksDir, file));
+    if (other.id !== taskId && ['building', 'qa-running'].includes(other.status) && other.workflowMode === 'direct-on-main') {
+      throw fail(5, 'Direct-on-main is already active for ' + other.id + '. Finish that build or QA run before starting another task.');
+    }
+  }
+}
+
 export function fail(exitCode, message) {
   const error = new Error(message);
   error.exitCode = exitCode;
@@ -264,7 +299,7 @@ export function claimNextTaskScript(): string {
   return `#!/usr/bin/env node
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { assertDirectModeAvailable, ensureWorktree, fail, newClaimId, projectWorkflowMode, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const agent = process.argv[2];
@@ -273,6 +308,7 @@ await runScript(async () => {
   }
 
   const mainRoot = resolveMainRoot();
+  const workflowMode = await projectWorkflowMode(mainRoot);
   const tasksDir = join(mainRoot, '.agent-board', 'tasks');
   const priorityRank = { high: 0, medium: 1, low: 2 };
 
@@ -288,17 +324,21 @@ await runScript(async () => {
 
   for (const candidate of candidates) {
     const path = taskPath(mainRoot, candidate.id);
-    const claimed = await withTaskLock(mainRoot, candidate.id, agent, async () => {
+    const claimMode = candidate.workflowMode || workflowMode;
+    const claimed = await withTaskLock(mainRoot, claimMode === 'direct-on-main' ? '_board' : candidate.id, agent, async () => {
       const task = await readJson(path);
       if (task.status !== 'ready-for-agent' || (task.assignedAgent !== agent && task.assignedAgent !== 'unassigned')) {
         return null; // Lost the race; try the next candidate.
       }
       const now = new Date().toISOString();
-      const worktree = ensureWorktree(mainRoot, task);
+      if (claimMode === 'direct-on-main') await assertDirectModeAvailable(mainRoot, task.id);
+      const worktree = ensureWorktree(mainRoot, task, claimMode);
       task.status = 'building';
       task.assignedAgent = agent;
       task.claimedBy = agent;
       task.claimId = newClaimId();
+      task.workflowMode = claimMode;
+      task.claimWarning = worktree.warning || '';
       task.branchName = worktree.branchName;
       task.worktreePath = worktree.worktreePath;
       task.claimedAt = now;
@@ -321,7 +361,7 @@ await runScript(async () => {
 
 export function claimTaskScript(): string {
   return `#!/usr/bin/env node
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { assertDirectModeAvailable, ensureWorktree, fail, newClaimId, projectWorkflowMode, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, agent] = process.argv.slice(2);
@@ -330,9 +370,12 @@ await runScript(async () => {
   }
 
   const mainRoot = resolveMainRoot();
+  const workflowMode = await projectWorkflowMode(mainRoot);
   const path = taskPath(mainRoot, taskId);
+  const candidate = await readJson(path);
+  const claimMode = candidate.workflowMode || workflowMode;
 
-  const task = await withTaskLock(mainRoot, taskId, agent, async () => {
+  const task = await withTaskLock(mainRoot, claimMode === 'direct-on-main' ? '_board' : taskId, agent, async () => {
     const current = await readJson(path);
     if (current.status !== 'ready-for-agent') {
       throw fail(2, 'Task must be ready-for-agent before build can start.');
@@ -341,11 +384,14 @@ await runScript(async () => {
       throw fail(3, 'Task is assigned to ' + current.assignedAgent + ', not ' + agent + '.');
     }
     const now = new Date().toISOString();
-    const worktree = ensureWorktree(mainRoot, current);
+    if (claimMode === 'direct-on-main') await assertDirectModeAvailable(mainRoot, current.id);
+    const worktree = ensureWorktree(mainRoot, current, claimMode);
     current.status = 'building';
     current.assignedAgent = agent;
     current.claimedBy = agent;
     current.claimId = newClaimId();
+    current.workflowMode = claimMode;
+    current.claimWarning = worktree.warning || '';
     current.branchName = worktree.branchName;
     current.worktreePath = worktree.worktreePath;
     current.claimedAt = now;
@@ -409,7 +455,7 @@ await runScript(async () => {
 
 export function startQaScript(): string {
   return `#!/usr/bin/env node
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { assertDirectModeAvailable, ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, agent = 'qa'] = process.argv.slice(2);
@@ -420,13 +466,14 @@ await runScript(async () => {
   const mainRoot = resolveMainRoot();
   const path = taskPath(mainRoot, taskId);
 
-  const task = await withTaskLock(mainRoot, taskId, agent, async () => {
+  const task = await withTaskLock(mainRoot, (await readJson(path)).workflowMode === 'direct-on-main' ? '_board' : taskId, agent, async () => {
     const current = await readJson(path);
     if (current.status !== 'ready-for-qa' && current.status !== 'failed-qa') {
       throw fail(2, 'Task must be ready-for-qa or failed-qa before QA can start.');
     }
     const now = new Date().toISOString();
-    const worktree = ensureWorktree(mainRoot, current);
+    if (current.workflowMode === 'direct-on-main') await assertDirectModeAvailable(mainRoot, current.id);
+    const worktree = ensureWorktree(mainRoot, current, current.workflowMode);
     current.status = 'qa-running';
     current.qaClaimedBy = agent;
     current.qaClaimId = newClaimId();

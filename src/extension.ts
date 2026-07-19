@@ -7,7 +7,7 @@ import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, sig
 import { isSetupComplete } from './onboarding';
 import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
-import { getWorkspaceStorage, StaleTaskError } from './storage';
+import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 
 let panel: vscode.WebviewPanel | undefined;
@@ -450,6 +450,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await chooseAgentSignIn();
         break;
       case 'sign-in-codex':
+        await saveWorkflowChoice(storage, message.workflowMode);
         await setSpecProvider(context, 'codex-cli');
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         signInCodexCli();
@@ -458,6 +459,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         webview.postMessage({ type: 'open-project-context', project: (await storage.loadBoardState()).project });
         break;
       case 'sign-in-claude':
+        await saveWorkflowChoice(storage, message.workflowMode);
         await setSpecProvider(context, 'claude-code');
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         signInClaudeCode();
@@ -470,6 +472,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await postState();
         break;
       case 'continue-to-board':
+        await saveWorkflowChoice(storage, message.workflowMode);
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         await postState();
         break;
@@ -615,6 +618,9 @@ async function runStartBuildAction(id: string): Promise<void> {
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent]);
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
+  if (claimed.claimWarning) {
+    vscode.window.showWarningMessage(claimed.claimWarning);
+  }
   const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
   await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
   void vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`, 'Show terminal').then((choice) => {
@@ -760,9 +766,9 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
     `You are the assigned implementation agent for Trellis task ${id}.`,
-    worktreePath
+    worktreePath && branchName
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
-      : 'Your working directory is the repository root.',
+      : 'This task uses direct-on-main mode. Work in the repository root, keep changes scoped to this task, and do not start another build concurrently.',
     `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
     `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
@@ -777,9 +783,9 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
     `You are the QA agent for Trellis task ${id}.`,
-    worktreePath
+    worktreePath && branchName
       ? `Your working directory is the task's git worktree on branch ${branchName}; review the implementation here.`
-      : 'Your working directory is the repository root.',
+      : 'Review the direct-on-main implementation in the repository root.',
     `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree.`,
     `Read ${mainRoot}/.agent-board/project.json and the task JSON.`,
     'Review acceptanceCriteria, qaChecklist, designQaChecklist, changed files on the branch, agentNotes, and validation evidence.',
@@ -794,9 +800,9 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
   const scripts = `${mainRoot}/.agent-board/scripts`;
   return [
     `You are the implementation agent automatically repairing failed QA for Trellis task ${id}.`,
-    worktreePath
+    worktreePath && branchName
       ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
-      : 'Work in the repository root.',
+      : 'This repair uses direct-on-main mode. Work in the repository root and keep the repair scoped to this task.',
     `Read the durable task record at ${taskFile}, especially the latest comments, qaNotes, qaEvidence, activityLog, and failed validation output.`,
     `Also read ${mainRoot}/.agent-board/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
@@ -997,6 +1003,12 @@ async function resolveStorage(): Promise<Awaited<ReturnType<typeof getWorkspaceS
   }
   activeStorage = await getWorkspaceStorage();
   return activeStorage;
+}
+
+async function saveWorkflowChoice(storage: AgentBoardStorage, value: unknown): Promise<void> {
+  const workflowMode = value === 'direct-on-main' ? 'direct-on-main' : 'branch-per-task';
+  const { project } = await storage.loadBoardState();
+  await storage.saveProjectContext({ ...project, workflowMode });
 }
 
 type WebviewHost = 'sidebar' | 'panel';

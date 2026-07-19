@@ -51,7 +51,7 @@ function blankTask(id, overrides = {}) {
   };
 }
 
-function scaffoldBoard(root, tasks) {
+function scaffoldBoard(root, tasks, projectOverrides = {}) {
   const boardDir = join(root, '.agent-board');
   for (const dir of ['tasks', 'scripts', 'locks', 'worktrees']) {
     mkdirSync(join(boardDir, dir), { recursive: true });
@@ -60,7 +60,8 @@ function scaffoldBoard(root, tasks) {
   writeFileSync(join(boardDir, 'project.json'), JSON.stringify({
     version: 1,
     validationCommands: [],
-    inference: { suggestedValidation: [] }
+    inference: { suggestedValidation: [] },
+    ...projectOverrides
   }, null, 2));
   const scripts = {
     '_lib.mjs': templates.boardLibScript(),
@@ -231,6 +232,48 @@ assert.equal(result.status, 0, result.stderr);
 const plainTask = readTask(plain, 'TASK-001');
 assert.equal(plainTask.status, 'building');
 assert.equal(plainTask.worktreePath, '');
+
+// --- Fixture C: direct-on-main mode ---
+const direct = await realpath(await mkdtemp(join(tmpdir(), 'agent-board-direct-')));
+cleanups.push(direct);
+git(direct, ['init', '-b', 'main']);
+git(direct, ['config', 'user.email', 'test@example.com']);
+git(direct, ['config', 'user.name', 'Test']);
+writeFileSync(join(direct, 'README.md'), 'fixture\n');
+scaffoldBoard(direct, [
+  blankTask('TASK-001', { status: 'ready-for-agent' }),
+  blankTask('TASK-002', { status: 'ready-for-agent' })
+], { workflowMode: 'direct-on-main' });
+git(direct, ['add', '-A']);
+git(direct, ['commit', '-q', '-m', 'fixture']);
+writeFileSync(join(direct, 'README.md'), 'dirty main\n');
+
+result = runScript(direct, 'claim-task.mjs', ['TASK-001', 'codex']);
+assert.equal(result.status, 0, result.stderr);
+const directTask = readTask(direct, 'TASK-001');
+assert.equal(directTask.workflowMode, 'direct-on-main');
+assert.equal(directTask.worktreePath, direct);
+assert.equal(directTask.branchName, '');
+assert.match(directTask.claimWarning, /uncommitted/);
+assert.equal(git(direct, ['worktree', 'list', '--porcelain']).match(/^worktree /gm)?.length, 1, 'direct mode must not add a worktree');
+
+result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
+assert.equal(result.status, 5, 'direct mode must block a second active build');
+assert.equal(readTask(direct, 'TASK-002').status, 'ready-for-agent');
+
+writeFileSync(join(direct, '.agent-board', 'tasks', 'TASK-001.json'), JSON.stringify({ ...readTask(direct, 'TASK-001'), status: 'ready-for-qa' }, null, 2));
+result = runScript(direct, 'start-qa.mjs', ['TASK-001', 'codex']);
+assert.equal(result.status, 0, result.stderr);
+result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
+assert.equal(result.status, 5, 'direct mode must also block a build while direct QA is active');
+
+// Changing the project mode only affects later claims.
+writeFileSync(join(direct, '.agent-board', 'project.json'), JSON.stringify({ workflowMode: 'branch-per-task', validationCommands: [] }, null, 2));
+result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(readTask(direct, 'TASK-001').workflowMode, 'direct-on-main');
+assert.equal(readTask(direct, 'TASK-002').workflowMode, 'branch-per-task');
+assert.ok(readTask(direct, 'TASK-002').worktreePath.includes('.agent-board/worktrees/TASK-002'));
 
 for (const dir of cleanups) {
   await rm(dir, { recursive: true, force: true });
