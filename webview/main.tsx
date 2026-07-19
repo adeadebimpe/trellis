@@ -166,6 +166,18 @@ const statusHints: Record<TaskStatus, string> = {
   merged: 'Shipped code'
 };
 
+const workflowPercent: Record<TaskStatus, number> = {
+  backlog: 0,
+  'ready-for-agent': 10,
+  building: 45,
+  'ready-for-qa': 70,
+  'qa-running': 85,
+  'failed-qa': 70,
+  'human-review': 95,
+  done: 100,
+  merged: 100
+};
+
 function App(): JSX.Element {
   const [state, setState] = useState<BoardState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -664,7 +676,7 @@ function App(): JSX.Element {
           const laneTitle = qaWaiting ? 'QA Waiting' : column.title;
           return (
             <div
-              className={`lane${qaWaiting ? ' laneQaWaiting' : ''}${collapsed ? ' laneCollapsed' : ''}${collapsed && dropTarget === column.id ? ' laneDropTarget' : ''}`}
+              className={`lane status-${column.id}${qaWaiting ? ' laneQaWaiting' : ''}${collapsed ? ' laneCollapsed' : ''}${collapsed && dropTarget === column.id ? ' laneDropTarget' : ''}`}
               key={column.id}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -689,10 +701,12 @@ function App(): JSX.Element {
                     <span className="chevron" aria-hidden="true">
                       {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
                     </span>
+                    <i className="laneDot" aria-hidden="true" />
                     <h2>{laneTitle}</h2>
                   </button>
                 ) : (
                   <div>
+                    <i className="laneDot" aria-hidden="true" />
                     <h2>{laneTitle}</h2>
                     <p>{qaWaiting ? 'Needs attention' : statusHints[column.id]}</p>
                   </div>
@@ -725,10 +739,18 @@ function App(): JSX.Element {
                     </span>
                     <span className="cardTitle" title={task.title || 'Untitled task'}>{task.title || 'Untitled task'}</span>
                     <span className="cardBottom">
-                      <span className={`agentChip agent-${task.assignedAgent}`}>{task.assignedAgent}</span>
-                      <span className={`cardClaim${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' cardClaimLive' : ''}`}>
-                        <span>{generatingIds.includes(task.id) ? 'drafting…' : task.status === 'qa-running' ? task.qaClaimedBy || 'qa' : task.claimedBy || 'unclaimed'}</span>
-                        <LoaderPinwheelIcon />
+                      <span className="phaseTags">
+                        <span className={`phaseTag agent-${task.assignedAgent}`}><b>Build</b>{task.assignedAgent}</span>
+                        <span className={`phaseTag agent-${task.qaAgent}`}><b>QA</b>{task.qaAgent}</span>
+                      </span>
+                      <span
+                        className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
+                        title={`${workflowPercent[task.status]}% through the Trellis workflow`}
+                        aria-label={`${workflowPercent[task.status]} percent workflow progress`}
+                        style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
+                      >
+                        <i aria-hidden="true"><LoaderPinwheelIcon /></i>
+                        <span>{workflowPercent[task.status]}%</span>
                       </span>
                     </span>
                   </button>
