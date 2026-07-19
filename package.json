@@ -1,6 +1,6 @@
 {
-  "name": "trellis",
-  "displayName": "Trellis",
+  "name": "trellis-agent-board",
+  "displayName": "Trellis – Agent Board",
   "description": "Structure autonomous coding work from task to verified code.",
   "version": "0.1.2",
   "publisher": "adebimpe-dev",
