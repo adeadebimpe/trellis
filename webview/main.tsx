@@ -116,6 +116,12 @@ interface BoardState {
     specProviderLabel: string;
     setupComplete: boolean;
     autoAssignAgent: AssignedAgent;
+    agentPermissions: {
+      allowlist: string[];
+      codexMode: string;
+      enabled: boolean;
+      decisionMade: boolean;
+    };
   };
 }
 
@@ -167,6 +173,7 @@ function App(): JSX.Element {
   const [projectDraft, setProjectDraft] = useState<ProjectContext | null>(null);
   const [projectOpen, setProjectOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -504,6 +511,44 @@ function App(): JSX.Element {
     column.id !== 'ready-for-qa' || state.tasks.some((task) => task.status === 'ready-for-qa')
   ) ?? [];
 
+  if (state && (!state.settings.agentPermissions.decisionMade || permissionsOpen)) {
+    const permissions = state.settings.agentPermissions;
+    return (
+      <main className="shell">
+        <section className="setupScreen" aria-label="Agent workflow permissions">
+          <div className="setupPanel">
+            <p className="eyebrow">Agent permissions</p>
+            <h1>{permissions.enabled ? 'Standard workflow is pre-authorized' : 'Let agents finish without repeated prompts?'}</h1>
+            <p>
+              Trellis can authorize the standard workflow once. Claude Code receives the exact allowlist below; Codex runs non-interactively inside its workspace-write sandbox. You can revoke this later from the board menu. Push, hard reset, file deletion, and full-access bypass are not included.
+            </p>
+            <p className="permissionMode"><strong>Codex mode</strong><code>{permissions.codexMode}</code></p>
+            <ul className="permissionList">
+              {permissions.allowlist.map((entry) => <li key={entry}><code>{entry}</code></li>)}
+            </ul>
+            <div className="setupActions">
+              {permissions.enabled ? (
+                <button className="danger" onClick={() => {
+                  vscode.postMessage({ type: 'configure-agent-permissions', action: 'revoke' });
+                  setPermissionsOpen(false);
+                }}>Revoke Trellis permissions</button>
+              ) : (
+                <button className="primary" onClick={() => {
+                  vscode.postMessage({ type: 'configure-agent-permissions', action: 'grant' });
+                  setPermissionsOpen(false);
+                }}>Allow standard workflow</button>
+              )}
+              <button className="ghost" onClick={() => {
+                if (!permissions.decisionMade) vscode.postMessage({ type: 'configure-agent-permissions', action: 'decline' });
+                setPermissionsOpen(false);
+              }}>{permissions.decisionMade ? 'Back to board' : 'Not now'}</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (state && !state.settings.setupComplete) {
     const chooseSetupMode = (mode: WorkflowMode) => setSetupWorkflowMode(mode);
     const setupMessage = (type: string) => vscode.postMessage({ type, workflowMode: setupWorkflowMode });
@@ -583,6 +628,10 @@ function App(): JSX.Element {
                     setMenuOpen(false);
                     vscode.postMessage({ type: 'sign-in-agents' });
                   }}>Agent sign in</button>
+                  <button role="menuitem" onClick={() => {
+                    setMenuOpen(false);
+                    setPermissionsOpen(true);
+                  }}>Agent permissions</button>
                   <button role="menuitem" className="expandButton" onClick={() => {
                     setMenuOpen(false);
                     vscode.postMessage({ type: 'open-full-board' });
