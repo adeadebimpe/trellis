@@ -71,6 +71,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const LOCK_TIMEOUT_MS = 10000;
 const LOCK_STALE_MS = 30000;
+const CLAIM_LEASE_MS = 30 * 60 * 1000;
 
 export function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -101,6 +102,32 @@ export function sameSnapshot(left, right) {
 
 export function newClaimId() {
   return randomUUID();
+}
+
+export function leaseExpiry() {
+  return new Date(Date.now() + CLAIM_LEASE_MS).toISOString();
+}
+
+export function leaseExpired(task) {
+  if (task.status !== 'building') return false;
+  const expiry = task.leaseExpiresAt || (task.claimedAt ? new Date(Date.parse(task.claimedAt) + CLAIM_LEASE_MS).toISOString() : '');
+  return Boolean(expiry) && Date.parse(expiry) <= Date.now();
+}
+
+export function taskEligibility(task, tasks, project, agent) {
+  const byId = new Map(tasks.map((item) => [item.id, item]));
+  const unfinished = (Array.isArray(task.dependsOn) ? task.dependsOn : []).filter((id) => !['done', 'merged'].includes(byId.get(id)?.status));
+  if (unfinished.length) return 'waiting for ' + unfinished.join(', ');
+  const available = new Set(Array.isArray(project?.agentCapabilities?.[agent]) ? project.agentCapabilities[agent] : []);
+  const missing = (Array.isArray(task.requiredCapabilities) ? task.requiredCapabilities : []).filter((item) => !available.has(item));
+  return missing.length ? 'missing capabilities: ' + missing.join(', ') : '';
+}
+
+export function effectivePriority(task) {
+  const base = { high: 0, medium: 100, low: 200 }[task.priority] ?? 300;
+  const since = Date.parse(task.readyAt || task.lastUpdated || new Date().toISOString());
+  const waitingDays = Math.max(0, (Date.now() - since) / 86400000);
+  return base - Math.min(250, waitingDays * 10);
 }
 
 export function resolveMainRoot(startDir = process.cwd()) {
@@ -214,17 +241,22 @@ export function ensureWorktree(mainRoot, task) {
     return { branchName, worktreePath: '', message: 'Claimed task. No worktree was created because this folder is not a Git repository.' };
   }
   try {
+    const expectedPath = resolve(join(mainRoot, '.agent-board', 'worktrees', task.id));
     const porcelain = git(['worktree', 'list', '--porcelain'], mainRoot);
     for (const block of porcelain.split('\\n\\n')) {
       if (block.includes('branch refs/heads/' + branchName)) {
         const line = block.split('\\n').find((entry) => entry.startsWith('worktree '));
         if (line) {
           const existingPath = line.slice('worktree '.length).trim();
-          return { branchName, worktreePath: existingPath, message: 'Reusing existing worktree at ' + existingPath + ' on branch ' + branchName + '.' };
+          if (resolve(existingPath) !== expectedPath || (task.worktreeTaskId && task.worktreeTaskId !== task.id)) {
+            throw new Error('Existing worktree provenance does not match ' + task.id + '.');
+          }
+          return { branchName, worktreePath: existingPath, baseSha: task.worktreeBaseSha || git(['merge-base', 'HEAD', branchName], mainRoot), message: 'Reusing verified worktree at ' + existingPath + ' on branch ' + branchName + '.' };
         }
       }
     }
-    const worktreePath = join(mainRoot, '.agent-board', 'worktrees', task.id);
+    const worktreePath = expectedPath;
+    const baseSha = git(['rev-parse', 'HEAD'], mainRoot);
     mkdirSync(join(mainRoot, '.agent-board', 'worktrees'), { recursive: true });
     let branchExists = true;
     try {
@@ -234,10 +266,10 @@ export function ensureWorktree(mainRoot, task) {
     }
     if (branchExists) {
       git(['worktree', 'add', worktreePath, branchName], mainRoot);
-      return { branchName, worktreePath, message: 'Created worktree at ' + worktreePath + ' on existing branch ' + branchName + '.' };
+      return { branchName, worktreePath, baseSha, message: 'Created worktree at ' + worktreePath + ' on existing branch ' + branchName + '.' };
     }
     git(['worktree', 'add', '-b', branchName, worktreePath], mainRoot);
-    return { branchName, worktreePath, message: 'Created worktree at ' + worktreePath + ' on new branch ' + branchName + '.' };
+    return { branchName, worktreePath, baseSha, message: 'Created worktree at ' + worktreePath + ' on new branch ' + branchName + '.' };
   } catch (error) {
     throw fail(4, 'Could not create the task worktree; the task was not claimed. ' + (error && error.message ? error.message : String(error)));
   }
@@ -264,7 +296,7 @@ export function claimNextTaskScript(): string {
   return `#!/usr/bin/env node
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { effectivePriority, ensureWorktree, fail, leaseExpired, leaseExpiry, newClaimId, readJson, resolveMainRoot, runScript, taskEligibility, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const agent = process.argv[2];
@@ -274,31 +306,44 @@ await runScript(async () => {
 
   const mainRoot = resolveMainRoot();
   const tasksDir = join(mainRoot, '.agent-board', 'tasks');
-  const priorityRank = { high: 0, medium: 1, low: 2 };
-
   const files = (await readdir(tasksDir)).filter((file) => file.endsWith('.json'));
-  const tasks = await Promise.all(files.map((file) => readJson(join(tasksDir, file))));
+  const tasks = [];
+  for (const file of files) {
+    try {
+      const task = await readJson(join(tasksDir, file));
+      if (task.id + '.json' !== file) throw new Error('embedded id does not match filename');
+      tasks.push(task);
+    } catch (error) {
+      console.error('[SKIP] ' + file + ': ' + (error?.message || error));
+    }
+  }
+  let project = {};
+  try { project = await readJson(join(mainRoot, '.agent-board', 'project.json')); } catch {}
 
   const candidates = tasks
-    .filter((task) => task.status === 'ready-for-agent' && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
-    .sort((a, b) => {
-      const priorityDelta = (priorityRank[a.priority] ?? 99) - (priorityRank[b.priority] ?? 99);
-      return priorityDelta || String(a.id).localeCompare(String(b.id));
-    });
+    .filter((task) => (task.status === 'ready-for-agent' || leaseExpired(task)) && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
+    .filter((task) => !taskEligibility(task, tasks, project, agent))
+    .sort((a, b) => effectivePriority(a) - effectivePriority(b) || String(a.id).localeCompare(String(b.id)));
 
   for (const candidate of candidates) {
     const path = taskPath(mainRoot, candidate.id);
     const claimed = await withTaskLock(mainRoot, candidate.id, agent, async () => {
       const task = await readJson(path);
-      if (task.status !== 'ready-for-agent' || (task.assignedAgent !== agent && task.assignedAgent !== 'unassigned')) {
+      if ((task.status !== 'ready-for-agent' && !leaseExpired(task)) || (task.assignedAgent !== agent && task.assignedAgent !== 'unassigned')) {
         return null; // Lost the race; try the next candidate.
       }
+      const blocked = taskEligibility(task, tasks, project, agent);
+      if (blocked) return null;
       const now = new Date().toISOString();
       const worktree = ensureWorktree(mainRoot, task);
       task.status = 'building';
       task.assignedAgent = agent;
       task.claimedBy = agent;
       task.claimId = newClaimId();
+      task.claimGeneration = Number(task.claimGeneration || 0) + 1;
+      task.leaseExpiresAt = leaseExpiry();
+      task.worktreeTaskId = task.id;
+      task.worktreeBaseSha = worktree.baseSha || task.worktreeBaseSha || '';
       task.branchName = worktree.branchName;
       task.worktreePath = worktree.worktreePath;
       task.claimedAt = now;
@@ -314,14 +359,25 @@ await runScript(async () => {
     }
   }
 
-  console.log(JSON.stringify({ noTask: true, agent, message: 'No eligible ready-for-agent tasks remain.' }));
+  const blocked = tasks
+    .filter((task) => (task.status === 'ready-for-agent' || leaseExpired(task)) && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
+    .map((task) => ({ id: task.id, reason: taskEligibility(task, tasks, project, agent) }))
+    .filter((entry) => entry.reason);
+  console.log(JSON.stringify({
+    noTask: true,
+    agent,
+    message: blocked.length
+      ? 'No eligible tasks. Blocked: ' + blocked.map((entry) => entry.id + ' (' + entry.reason + ')').join(', ')
+      : 'No eligible ready-for-agent tasks remain.'
+  }));
 });
 `;
 }
 
 export function claimTaskScript(): string {
   return `#!/usr/bin/env node
-import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { join } from 'node:path';
+import { ensureWorktree, fail, leaseExpired, leaseExpiry, newClaimId, readJson, resolveMainRoot, runScript, taskEligibility, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, agent] = process.argv.slice(2);
@@ -331,12 +387,22 @@ await runScript(async () => {
 
   const mainRoot = resolveMainRoot();
   const path = taskPath(mainRoot, taskId);
+  const tasksDir = join(mainRoot, '.agent-board', 'tasks');
+  const tasks = [];
+  for (const file of await (await import('node:fs/promises')).readdir(tasksDir)) {
+    if (!file.endsWith('.json')) continue;
+    try { tasks.push(await readJson(join(tasksDir, file))); } catch {}
+  }
+  let project = {};
+  try { project = await readJson(join(mainRoot, '.agent-board', 'project.json')); } catch {}
 
   const task = await withTaskLock(mainRoot, taskId, agent, async () => {
     const current = await readJson(path);
-    if (current.status !== 'ready-for-agent') {
+    if (current.status !== 'ready-for-agent' && !leaseExpired(current)) {
       throw fail(2, 'Task must be ready-for-agent before build can start.');
     }
+    const blocked = taskEligibility(current, tasks, project, agent);
+    if (blocked) throw fail(5, 'Task is not eligible: ' + blocked + '.');
     if (current.assignedAgent && current.assignedAgent !== 'unassigned' && current.assignedAgent !== agent) {
       throw fail(3, 'Task is assigned to ' + current.assignedAgent + ', not ' + agent + '.');
     }
@@ -346,6 +412,10 @@ await runScript(async () => {
     current.assignedAgent = agent;
     current.claimedBy = agent;
     current.claimId = newClaimId();
+    current.claimGeneration = Number(current.claimGeneration || 0) + 1;
+    current.leaseExpiresAt = leaseExpiry();
+    current.worktreeTaskId = current.id;
+    current.worktreeBaseSha = worktree.baseSha || current.worktreeBaseSha || '';
     current.branchName = worktree.branchName;
     current.worktreePath = worktree.worktreePath;
     current.claimedAt = now;
@@ -357,6 +427,26 @@ await runScript(async () => {
   });
 
   console.log(JSON.stringify({ task, taskFile: path, worktreePath: task.worktreePath }, null, 2));
+});
+`;
+}
+
+export function heartbeatTaskScript(): string {
+  return `#!/usr/bin/env node
+import { leaseExpiry, fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+
+await runScript(async () => {
+  const [taskId, claimId] = process.argv.slice(2);
+  if (!taskId || !claimId) throw fail(1, 'Usage: heartbeat-task.mjs TASK-ID CLAIM-ID');
+  const mainRoot = resolveMainRoot();
+  const path = taskPath(mainRoot, taskId);
+  await withTaskLock(mainRoot, taskId, 'heartbeat', async () => {
+    const task = await readJson(path);
+    if (task.status !== 'building' || task.claimId !== claimId) throw fail(2, 'Claim is no longer active.');
+    task.leaseExpiresAt = leaseExpiry();
+    task.lastUpdated = new Date().toISOString();
+    await writeJson(path, task);
+  });
 });
 `;
 }
@@ -508,6 +598,15 @@ await runScript(async () => {
     : Array.isArray(project.validationCommands) && project.validationCommands.length
       ? project.validationCommands
       : project.inference?.suggestedValidation ?? [];
+
+  const approved = new Set([
+    ...(Array.isArray(project.validationCommands) ? project.validationCommands : []),
+    ...(Array.isArray(project.approvedValidationCommands) ? project.approvedValidationCommands : [])
+  ]);
+  const unapproved = commands.filter((command) => !approved.has(command));
+  if (unapproved.length) {
+    throw fail(2, 'Refusing unapproved validation command(s): ' + unapproved.join(', ') + '. Add exact commands to project.approvedValidationCommands after review.');
+  }
 
   if (!commands.length) {
     throw fail(2, 'No validation commands configured on the task or project. Add validationCommands first.');

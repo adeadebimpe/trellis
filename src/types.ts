@@ -100,6 +100,13 @@ export interface AgentBoardTask {
   branchName: string;
   worktreePath: string;
   claimedAt: string;
+  leaseExpiresAt?: string;
+  claimGeneration?: number;
+  dependsOn?: string[];
+  requiredCapabilities?: string[];
+  readyAt?: string;
+  worktreeTaskId?: string;
+  worktreeBaseSha?: string;
   claimId?: string;
   qaClaimId?: string;
   qaStartedAt?: string;
@@ -156,6 +163,8 @@ export interface ProjectContext {
   codingRules: string[];
   agentRules: string[];
   validationCommands: string[];
+  approvedValidationCommands?: string[];
+  agentCapabilities?: Partial<Record<'codex' | 'claude', string[]>>;
   designRules: string[];
   glossary: string[];
   inference: ProjectInference;

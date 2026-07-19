@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
+import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, heartbeatTaskScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
 import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
@@ -48,6 +48,7 @@ export class AgentBoardStorage {
       ['_lib.mjs', boardLibScript()],
       ['claim-next-task.mjs', claimNextTaskScript()],
       ['claim-task.mjs', claimTaskScript()],
+      ['heartbeat-task.mjs', heartbeatTaskScript()],
       ['complete-task.mjs', completeTaskScript()],
       ['start-qa.mjs', startQaScript()],
       ['run-validation.mjs', runValidationScript()],
@@ -529,6 +530,8 @@ export class AgentBoardStorage {
         'Record any assumptions in the task activityLog or agentNotes.'
       ],
       validationCommands: [],
+      approvedValidationCommands: [],
+      agentCapabilities: {},
       designRules: [],
       glossary: [],
       inference: await this.buildProjectInference(),
@@ -625,6 +628,11 @@ export class AgentBoardStorage {
       branchName: '',
       worktreePath: '',
       claimedAt: '',
+      leaseExpiresAt: '',
+      claimGeneration: 0,
+      dependsOn: [],
+      requiredCapabilities: [],
+      readyAt: '',
       lastValidation: null,
       shipResult: null,
       lastUpdated: now
@@ -672,6 +680,11 @@ export class AgentBoardStorage {
       branchName: task.branchName ?? '',
       worktreePath: task.worktreePath ?? '',
       claimedAt: task.claimedAt ?? '',
+      leaseExpiresAt: task.leaseExpiresAt ?? '',
+      claimGeneration: Number(task.claimGeneration ?? 0),
+      dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn : [],
+      requiredCapabilities: Array.isArray(task.requiredCapabilities) ? task.requiredCapabilities : [],
+      readyAt: task.readyAt ?? '',
       lastValidation: task.lastValidation ?? null,
       shipResult: task.shipResult ?? null,
       agentNotes: task.agentNotes ?? ''
