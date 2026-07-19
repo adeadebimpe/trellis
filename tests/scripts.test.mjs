@@ -60,12 +60,14 @@ function scaffoldBoard(root, tasks) {
   writeFileSync(join(boardDir, 'project.json'), JSON.stringify({
     version: 1,
     validationCommands: [],
+    approvedValidationCommands: [...new Set(tasks.flatMap((task) => task.validationCommands ?? []))],
     inference: { suggestedValidation: [] }
   }, null, 2));
   const scripts = {
     '_lib.mjs': templates.boardLibScript(),
     'claim-task.mjs': templates.claimTaskScript(),
     'claim-next-task.mjs': templates.claimNextTaskScript(),
+    'heartbeat-task.mjs': templates.heartbeatTaskScript(),
     'complete-task.mjs': templates.completeTaskScript(),
     'start-qa.mjs': templates.startQaScript(),
     'run-validation.mjs': templates.runValidationScript(),
@@ -261,6 +263,53 @@ assert.equal(result.status, 0, result.stderr);
 const plainTask = readTask(plain, 'TASK-001');
 assert.equal(plainTask.status, 'building');
 assert.equal(plainTask.worktreePath, '');
+
+// --- Fixture C: resilient, dependency/capability-aware scheduling and leases ---
+const orchestration = await mkdtemp(join(tmpdir(), 'agent-board-orchestration-'));
+cleanups.push(orchestration);
+scaffoldBoard(orchestration, [
+  blankTask('TASK-001', { status: 'ready-for-agent', priority: 'high', dependsOn: ['TASK-999'] }),
+  blankTask('TASK-002', { status: 'ready-for-agent', priority: 'high', requiredCapabilities: ['docker'] }),
+  blankTask('TASK-003', { status: 'ready-for-agent', priority: 'low', readyAt: '2026-06-01T00:00:00.000Z', validationCommands: ['node -e "process.exit(0)"'] }),
+  blankTask('TASK-004', { status: 'building', assignedAgent: 'codex', priority: 'low', claimedAt: '2026-06-01T00:00:00.000Z', lastUpdated: '2026-07-19T00:00:00.000Z', claimGeneration: 1 })
+]);
+writeFileSync(join(orchestration, '.agent-board', 'project.json'), JSON.stringify({
+  version: 1,
+  validationCommands: [],
+  approvedValidationCommands: ['node -e "process.exit(0)"'],
+  agentCapabilities: { codex: ['typescript'] },
+  inference: { suggestedValidation: [] }
+}, null, 2));
+writeFileSync(join(orchestration, '.agent-board', 'tasks', 'TASK-005.json'), '{ malformed');
+
+result = runScript(orchestration, 'claim-next-task.mjs', ['codex']);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(JSON.parse(result.stdout).task.id, 'TASK-003', 'an aged low-priority task must eventually outrank new work');
+assert.match(result.stderr, /\[SKIP\] TASK-005.json/);
+
+result = runScript(orchestration, 'claim-task.mjs', ['TASK-001', 'codex']);
+assert.equal(result.status, 5, 'unfinished dependencies must block explicit claims');
+result = runScript(orchestration, 'claim-task.mjs', ['TASK-002', 'codex']);
+assert.equal(result.status, 5, 'missing capabilities must block explicit claims');
+
+result = runScript(orchestration, 'claim-task.mjs', ['TASK-004', 'codex']);
+assert.equal(result.status, 0, result.stderr);
+const reclaimed = readTask(orchestration, 'TASK-004');
+assert.equal(reclaimed.claimGeneration, 2);
+assert.ok(reclaimed.leaseExpiresAt);
+const oldLease = reclaimed.leaseExpiresAt;
+result = runScript(orchestration, 'heartbeat-task.mjs', ['TASK-004', reclaimed.claimId]);
+assert.equal(result.status, 0, result.stderr);
+assert.ok(readTask(orchestration, 'TASK-004').leaseExpiresAt >= oldLease);
+
+const marker = join(orchestration, 'unapproved-command-ran');
+writeFileSync(join(orchestration, '.agent-board', 'tasks', 'TASK-003.json'), JSON.stringify({
+  ...readTask(orchestration, 'TASK-003'),
+  validationCommands: [`node -e "require('fs').writeFileSync('${marker}', 'bad')"`]
+}, null, 2));
+result = runScript(orchestration, 'run-validation.mjs', ['TASK-003']);
+assert.equal(result.status, 2, 'unapproved task commands must be refused before execution');
+assert.equal(existsSync(marker), false);
 
 for (const dir of cleanups) {
   await rm(dir, { recursive: true, force: true });
