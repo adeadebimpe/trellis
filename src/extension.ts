@@ -9,6 +9,7 @@ import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
+import { shouldStartAutomaticQa } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -896,12 +897,13 @@ async function startReadyBuildTasks(): Promise<void> {
 async function startReadyQaTasks(): Promise<void> {
   const storage = await resolveStorage();
   const { tasks } = await storage.loadBoardState();
-  const ready = tasks.filter((task) =>
-    task.status === 'ready-for-qa'
-    && !agentTerminals.has(task.id)
-    && !autoQaStarting.has(task.id)
-    && autoQaAttemptedVersions.get(task.id) !== task.lastUpdated
-  );
+  const ready = tasks.filter((task) => shouldStartAutomaticQa(
+    task.status,
+    agentTerminals.get(task.id)?.kind,
+    autoQaStarting.has(task.id),
+    autoQaAttemptedVersions.get(task.id),
+    task.lastUpdated
+  ));
 
   await Promise.all(ready.map(async (task) => {
     autoQaStarting.add(task.id);

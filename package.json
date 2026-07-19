@@ -112,9 +112,10 @@
     "test:gitignore": "node tests/gitignore.test.mjs",
     "test:archive": "node tests/archive.test.mjs",
     "test:onboarding": "node tests/onboarding.test.mjs",
+    "test:handoff": "node tests/agentHandoff.test.mjs",
     "test:scripts": "node tests/scripts.test.mjs",
     "test:lifecycle": "node tests/taskLifecycle.test.mjs",
-    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:scripts && npm run test:lifecycle",
+    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:handoff && npm run test:scripts && npm run test:lifecycle",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"
