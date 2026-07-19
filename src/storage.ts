@@ -6,6 +6,7 @@ import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
 import { selectDoneTasksToArchive } from './archive';
+import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
 const execFileAsync = promisify(execFile);
@@ -211,6 +212,9 @@ export class AgentBoardStorage {
     if (request.expectedLastUpdated && existing.lastUpdated !== request.expectedLastUpdated) {
       throw new StaleTaskError();
     }
+    if (request.task.status) {
+      assertStatusChangeAllowed(existing, request.task.status);
+    }
 
     const now = new Date().toISOString();
     const incomingLog = Array.isArray(request.task.activityLog) ? request.task.activityLog : undefined;
@@ -369,6 +373,7 @@ export class AgentBoardStorage {
 
   private async runActionLocked(id: string, action: string, expectedLastUpdated?: string): Promise<AgentBoardTask> {
     const existing = await this.readJson<AgentBoardTask>(this.taskUri(id));
+    assertBoardActionAllowed(existing, action);
     const now = new Date().toISOString();
     const patch: Partial<AgentBoardTask> & { id: string } = { id };
     const activity = [...(existing.activityLog ?? [])];

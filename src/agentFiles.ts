@@ -64,6 +64,7 @@ export function boardLibScript(): string {
 // Shared helpers for Trellis scripts. Task state always lives in the MAIN
 // git worktree's .agent-board/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -82,6 +83,24 @@ export function isGitRepo(cwd) {
   } catch {
     return false;
   }
+}
+
+export function codeSnapshot(cwd) {
+  if (!isGitRepo(cwd)) return { git: false };
+  return {
+    git: true,
+    head: git(['rev-parse', 'HEAD'], cwd),
+    branch: git(['branch', '--show-current'], cwd),
+    clean: git(['status', '--porcelain=v1', '--untracked-files=all'], cwd) === ''
+  };
+}
+
+export function sameSnapshot(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export function newClaimId() {
+  return randomUUID();
 }
 
 export function resolveMainRoot(startDir = process.cwd()) {
@@ -220,7 +239,7 @@ export function ensureWorktree(mainRoot, task) {
     git(['worktree', 'add', '-b', branchName, worktreePath], mainRoot);
     return { branchName, worktreePath, message: 'Created worktree at ' + worktreePath + ' on new branch ' + branchName + '.' };
   } catch (error) {
-    return { branchName, worktreePath: '', message: 'Claimed task, but worktree creation failed: ' + (error && error.message ? error.message : String(error)) };
+    throw fail(4, 'Could not create the task worktree; the task was not claimed. ' + (error && error.message ? error.message : String(error)));
   }
 }
 
@@ -245,7 +264,7 @@ export function claimNextTaskScript(): string {
   return `#!/usr/bin/env node
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureWorktree, fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const agent = process.argv[2];
@@ -279,6 +298,7 @@ await runScript(async () => {
       task.status = 'building';
       task.assignedAgent = agent;
       task.claimedBy = agent;
+      task.claimId = newClaimId();
       task.branchName = worktree.branchName;
       task.worktreePath = worktree.worktreePath;
       task.claimedAt = now;
@@ -301,7 +321,7 @@ await runScript(async () => {
 
 export function claimTaskScript(): string {
   return `#!/usr/bin/env node
-import { ensureWorktree, fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, agent] = process.argv.slice(2);
@@ -314,7 +334,7 @@ await runScript(async () => {
 
   const task = await withTaskLock(mainRoot, taskId, agent, async () => {
     const current = await readJson(path);
-    if (current.status !== 'ready-for-agent' && current.status !== 'building') {
+    if (current.status !== 'ready-for-agent') {
       throw fail(2, 'Task must be ready-for-agent before build can start.');
     }
     if (current.assignedAgent && current.assignedAgent !== 'unassigned' && current.assignedAgent !== agent) {
@@ -325,6 +345,7 @@ await runScript(async () => {
     current.status = 'building';
     current.assignedAgent = agent;
     current.claimedBy = agent;
+    current.claimId = newClaimId();
     current.branchName = worktree.branchName;
     current.worktreePath = worktree.worktreePath;
     current.claimedAt = now;
@@ -342,7 +363,7 @@ await runScript(async () => {
 
 export function completeTaskScript(): string {
   return `#!/usr/bin/env node
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const taskId = process.argv[2];
@@ -360,6 +381,13 @@ await runScript(async () => {
     }
     if (!current.lastValidation || !current.lastValidation.passed) {
       throw fail(3, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+    }
+    if (current.lastValidation.phase !== 'build' || current.lastValidation.claimId !== current.claimId) {
+      throw fail(3, 'Validation does not belong to the current build claim. Re-run validation.');
+    }
+    const snapshot = codeSnapshot(current.worktreePath || mainRoot);
+    if (!sameSnapshot(snapshot, current.lastValidation.snapshot)) {
+      throw fail(3, 'Code changed after validation. Commit changes and re-run validation.');
     }
     if (current.claimedAt && current.lastValidation.ranAt <= current.claimedAt) {
       throw fail(3, 'Validation is older than the current claim. Re-run: node .agent-board/scripts/run-validation.mjs ' + taskId);
@@ -381,7 +409,7 @@ await runScript(async () => {
 
 export function startQaScript(): string {
   return `#!/usr/bin/env node
-import { ensureWorktree, fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, agent = 'qa'] = process.argv.slice(2);
@@ -401,6 +429,8 @@ await runScript(async () => {
     const worktree = ensureWorktree(mainRoot, current);
     current.status = 'qa-running';
     current.qaClaimedBy = agent;
+    current.qaClaimId = newClaimId();
+    current.qaStartedAt = now;
     current.qaAgent = current.qaAgent && current.qaAgent !== 'unassigned' ? current.qaAgent : (['claude', 'codex'].includes(agent) ? agent : 'unassigned');
     current.branchName = worktree.branchName;
     current.worktreePath = worktree.worktreePath;
@@ -421,7 +451,7 @@ export function runValidationScript(): string {
   return `#!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -484,6 +514,18 @@ await runScript(async () => {
   }
 
   const cwd = task.worktreePath || mainRoot;
+  const phase = task.status === 'qa-running' ? 'qa' : task.status === 'building' ? 'build' : '';
+  if (!phase) {
+    throw fail(2, 'Validation may only run while a task is building or qa-running.');
+  }
+  const claimId = phase === 'qa' ? task.qaClaimId : task.claimId;
+  if (!claimId) {
+    throw fail(2, 'Task has no active claim. Claim the task again before validation.');
+  }
+  const snapshotBefore = codeSnapshot(cwd);
+  if (snapshotBefore.git && !snapshotBefore.clean) {
+    throw fail(2, 'Commit or remove working-tree changes before validation.');
+  }
   console.log('Running ' + commands.length + ' validation command(s) in ' + cwd);
   const results = [];
   for (const command of commands) {
@@ -495,10 +537,18 @@ await runScript(async () => {
 
   const passed = results.every((result) => result.exitCode === 0);
   const ranAt = new Date().toISOString();
+  const snapshotAfter = codeSnapshot(cwd);
+  if (!sameSnapshot(snapshotBefore, snapshotAfter)) {
+    throw fail(3, 'Code changed while validation was running; results were not recorded.');
+  }
 
   await withTaskLock(mainRoot, taskId, 'run-validation', async () => {
     const fresh = await readJson(path);
-    fresh.lastValidation = { ranAt, passed, results };
+    const freshClaimId = phase === 'qa' ? fresh.qaClaimId : fresh.claimId;
+    if (fresh.status !== task.status || freshClaimId !== claimId || (fresh.worktreePath || mainRoot) !== cwd) {
+      throw fail(3, 'Task ownership changed while validation was running; results were not recorded.');
+    }
+    fresh.lastValidation = { ranAt, passed, results, phase, claimId, snapshot: snapshotAfter };
     fresh.qaEvidence = Array.isArray(fresh.qaEvidence) ? fresh.qaEvidence : [];
     for (const result of results) {
       fresh.qaEvidence.push((result.exitCode === 0 ? 'PASS' : 'FAIL (exit ' + result.exitCode + ')') + ': ' + result.command);
@@ -522,7 +572,7 @@ await runScript(async () => {
 
 export function passQaScript(): string {
   return `#!/usr/bin/env node
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, ...noteParts] = process.argv.slice(2);
@@ -544,6 +594,12 @@ await runScript(async () => {
     }
     if (!current.lastValidation || !current.lastValidation.passed) {
       throw fail(4, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+    }
+    if (current.lastValidation.phase !== 'qa' || current.lastValidation.claimId !== current.qaClaimId || current.lastValidation.ranAt <= current.qaStartedAt) {
+      throw fail(4, 'QA must run fresh validation after QA starts.');
+    }
+    if (!sameSnapshot(codeSnapshot(current.worktreePath || mainRoot), current.lastValidation.snapshot)) {
+      throw fail(4, 'Code changed after QA validation. Re-run validation.');
     }
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';

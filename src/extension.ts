@@ -390,7 +390,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await storage.saveTask({
           task: {
             id: current.id,
-            status: 'building',
+            status: 'ready-for-agent',
             comments: [
               ...(current.comments ?? []),
               { id: `${current.id}-${Date.now()}`, author: 'human', phase, message: feedback, createdAt: now }
@@ -608,7 +608,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   const task = findTask(state.tasks, id);
   const agent = requireAgent(task.assignedAgent, 'Assign Codex or Claude before starting build.');
 
-  if (task.status !== 'ready-for-agent' && task.status !== 'building') {
+  if (task.status !== 'ready-for-agent') {
     throw new Error('Move the task to Ready for Agent before starting build.');
   }
 
@@ -934,10 +934,10 @@ async function startFailedQaRepairs(): Promise<void> {
       const agent = requireAgent(task.assignedAgent, 'Assign a Codex or Claude build agent before automatic repair can start.');
       await ensureAgentCliAvailable(agent);
       const now = new Date().toISOString();
-      const repairing = await storage.saveTask({
+      await storage.saveTask({
         task: {
           id: task.id,
-          status: 'building',
+          status: 'ready-for-agent',
           activityLog: [
             ...(task.activityLog ?? []),
             { timestamp: now, actor: 'vscode', message: 'QA failed. Returned to building and started an automatic repair.' }
@@ -945,6 +945,8 @@ async function startFailedQaRepairs(): Promise<void> {
         },
         expectedLastUpdated: task.lastUpdated
       });
+      await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', task.id, agent]);
+      const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
       const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
       await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
       vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
