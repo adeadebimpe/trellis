@@ -3,3 +3,4 @@ dist/
 *.vsix
 dazzle/
 .agent-board/
+.DS_Store

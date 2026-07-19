@@ -2,10 +2,10 @@
   "version": 1,
   "contextMode": "standard",
   "contextProfiles": {},
-  "contextNotes": "",
+  "contextNotes": "Stack: Node.js, TypeScript, VS Code Extension API, React webview\nPackage manager: npm\nScripts: build, compile, package, test, test:archive, test:gitignore, test:onboarding, test:prd, test:scripts, typecheck, watch\nKey files: package.json, package-lock.json, tsconfig.json, src/extension.ts, webview/main.tsx\nValidation: npm run build, npm run compile, npm run test, npm run typecheck",
   "overview": "Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.",
   "goals": [],
-  "architectureNotes": "",
+  "architectureNotes": "Detected stack: Node.js, TypeScript, VS Code Extension API, React webview.\nPackage manager: npm.\nKey files: package.json, package-lock.json, tsconfig.json, src/extension.ts, webview/main.tsx.",
   "codingRules": [
     "Follow existing project patterns before introducing new abstractions.",
     "Keep changes scoped to the active Trellis task.",
@@ -16,7 +16,12 @@
     "Use project validationCommands when deciding what to run.",
     "Record any assumptions in the task activityLog or agentNotes."
   ],
-  "validationCommands": [],
+  "validationCommands": [
+    "npm run build",
+    "npm run compile",
+    "npm run test",
+    "npm run typecheck"
+  ],
   "designRules": [],
   "glossary": [],
   "inference": {
@@ -53,7 +58,7 @@
       "npm run test",
       "npm run typecheck"
     ],
-    "lastInferred": "2026-07-18T20:03:26.160Z"
+    "lastInferred": "2026-07-19T13:17:33.707Z"
   },
-  "lastUpdated": "2026-07-18T20:03:26.160Z"
+  "lastUpdated": "2026-07-19T13:17:33.707Z"
 }
