@@ -107,7 +107,8 @@ scaffoldBoard(repo, [
   blankTask('TASK-002', { status: 'ready-for-qa', validationCommands: ['node -e "process.exit(1)"'] }),
   blankTask('TASK-003', { status: 'ready-for-agent' }),
   blankTask('TASK-004', { status: 'ready-for-agent', priority: 'high' }),
-  blankTask('TASK-005', { status: 'ready-for-agent', priority: 'medium' })
+  blankTask('TASK-005', { status: 'ready-for-agent', priority: 'medium' }),
+  blankTask('TASK-006', { status: 'ready-for-agent', branchName: 'invalid branch name' })
 ]);
 git(repo, ['add', '-A']);
 git(repo, ['commit', '-q', '-m', 'fixture']);
@@ -120,12 +121,24 @@ const task1 = readTask(repo, 'TASK-001');
 assert.equal(task1.status, 'building');
 assert.equal(task1.claimedBy, 'claude');
 assert.ok(task1.claimedAt);
+assert.ok(task1.claimId);
 assert.equal(task1.worktreePath, join(repo, '.agent-board', 'worktrees', 'TASK-001'));
 assert.equal(claimOutput.worktreePath, task1.worktreePath);
 assert.ok(existsSync(task1.worktreePath));
 assert.match(git(repo, ['worktree', 'list']), /agent-board\/TASK-001/);
 const worktreeCopy = JSON.parse(readFileSync(join(task1.worktreePath, '.agent-board', 'tasks', 'TASK-001.json'), 'utf8'));
 assert.equal(worktreeCopy.status, 'ready-for-agent', 'task state must not leak into the worktree checkout');
+
+// A second session cannot re-claim an active build, even when it uses the same agent type.
+result = runScript(repo, 'claim-task.mjs', ['TASK-001', 'claude']);
+assert.equal(result.status, 2, 'an active build must not be claimed twice');
+
+// A Git worktree failure leaves the task ready instead of silently falling back to main.
+result = runScript(repo, 'claim-task.mjs', ['TASK-006', 'claude']);
+assert.equal(result.status, 4, 'worktree creation failure must fail the claim');
+assert.equal(readTask(repo, 'TASK-006').status, 'ready-for-agent');
+assert.equal(readTask(repo, 'TASK-006').worktreePath, '');
+writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-006.json'), JSON.stringify({ ...readTask(repo, 'TASK-006'), status: 'backlog' }, null, 2));
 
 // complete-task refuses without a validation run.
 result = runScript(repo, 'complete-task.mjs', ['TASK-001']);
@@ -139,6 +152,14 @@ const validated = readTask(repo, 'TASK-001');
 assert.equal(validated.lastValidation.passed, true);
 assert.equal(validated.lastValidation.results.length, 1);
 assert.ok(validated.qaEvidence.length > 0);
+assert.equal(validated.lastValidation.claimId, task1.claimId);
+assert.equal(validated.lastValidation.phase, 'build');
+
+// A passing result is invalid once the tested code changes.
+writeFileSync(join(task1.worktreePath, 'README.md'), 'changed after validation\n');
+result = runScript(repo, 'complete-task.mjs', ['TASK-001']);
+assert.equal(result.status, 3, 'completion must reject code changed after validation');
+writeFileSync(join(task1.worktreePath, 'README.md'), 'fixture\n');
 
 // Now complete-task succeeds.
 result = runScript(repo, 'complete-task.mjs', ['TASK-001']);
@@ -153,6 +174,10 @@ result = runScript(repo, 'start-qa.mjs', ['TASK-001', 'codex']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-001').status, 'qa-running');
 
+result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
+assert.equal(result.status, 4, 'QA must not reuse build validation');
+result = runScript(repo, 'run-validation.mjs', ['TASK-001']);
+assert.equal(result.status, 0, result.stderr);
 result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-001').status, 'human-review');

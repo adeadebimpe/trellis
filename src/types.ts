@@ -56,6 +56,14 @@ export interface ValidationRun {
   ranAt: string;
   passed: boolean;
   results: ValidationResult[];
+  phase?: 'build' | 'qa';
+  claimId?: string;
+  snapshot?: {
+    git: boolean;
+    head?: string;
+    branch?: string;
+    clean?: boolean;
+  };
 }
 
 export interface ShipResult {
@@ -92,6 +100,9 @@ export interface AgentBoardTask {
   branchName: string;
   worktreePath: string;
   claimedAt: string;
+  claimId?: string;
+  qaClaimId?: string;
+  qaStartedAt?: string;
   lastValidation: ValidationRun | null;
   shipResult: ShipResult | null;
   intake?: TaskIntake;
