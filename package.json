@@ -5,6 +5,14 @@
   "version": "0.1.2",
   "publisher": "adebimpe",
   "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adeadebimpe/trellis.git"
+  },
+  "homepage": "https://github.com/adeadebimpe/trellis#readme",
+  "bugs": {
+    "url": "https://github.com/adeadebimpe/trellis/issues"
+  },
   "icon": "media/marketplace-icon.png",
   "galleryBanner": {
     "color": "#151719",
