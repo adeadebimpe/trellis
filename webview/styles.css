@@ -143,6 +143,44 @@ select {
   padding-top: 14px;
 }
 
+.permissionList {
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  list-style: none;
+  margin: 0 0 20px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.permissionList li + li {
+  margin-top: 7px;
+}
+
+.permissionList code {
+  color: var(--body-text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.permissionMode {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--accent) 8%, var(--background));
+  border-left: 3px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.permissionMode code {
+  color: var(--body-text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 /* Header — 48px surface bar: logo tile + wordmark left, icon actions right. */
 .topbar {
   align-items: center;

@@ -8,6 +8,7 @@ import { deriveTaskTitle } from './prdPrompt';
 import { selectDoneTasksToArchive } from './archive';
 import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
+import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +31,34 @@ export class AgentBoardStorage {
 
   get boardDir(): vscode.Uri {
     return vscode.Uri.joinPath(this.root, '.agent-board');
+  }
+
+  async getClaudePermissionStatus(allowlist: string[]): Promise<{ enabled: boolean; settingsExist: boolean }> {
+    const uri = vscode.Uri.joinPath(this.root, '.claude', 'settings.json');
+    if (!await this.exists(uri)) return { enabled: false, settingsExist: false };
+    try {
+      const settings = await this.readJson<ClaudeSettings>(uri);
+      return { enabled: hasAgentPermissions(settings, allowlist), settingsExist: true };
+    } catch {
+      // Keep the board usable. Grant/revoke still surfaces the parse error rather
+      // than replacing a malformed user-owned settings file.
+      return { enabled: false, settingsExist: true };
+    }
+  }
+
+  async grantClaudePermissions(allowlist: string[]): Promise<void> {
+    const directory = vscode.Uri.joinPath(this.root, '.claude');
+    const uri = vscode.Uri.joinPath(directory, 'settings.json');
+    await this.ensureDir(directory);
+    const existing = await this.exists(uri) ? await this.readJson<ClaudeSettings>(uri) : {};
+    await this.writeJson(uri, mergeAgentPermissions(existing, allowlist));
+  }
+
+  async revokeClaudePermissions(managed: string[]): Promise<void> {
+    const uri = vscode.Uri.joinPath(this.root, '.claude', 'settings.json');
+    if (!await this.exists(uri)) return;
+    const existing = await this.readJson<ClaudeSettings>(uri);
+    await this.writeJson(uri, removeAgentPermissions(existing, managed));
   }
 
   async prepareAgentFiles(): Promise<void> {

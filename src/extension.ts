@@ -9,6 +9,7 @@ import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
+import { buildAgentPermissionAllowlist, codexAutomationArgs } from './agentPermissions';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -16,6 +17,9 @@ let refreshTimer: NodeJS.Timeout | undefined;
 let activeStorage: Awaited<ReturnType<typeof getWorkspaceStorage>> | undefined;
 let activeContext: vscode.ExtensionContext | undefined;
 const ONBOARDING_COMPLETE_KEY = 'agentBoard.onboardingComplete';
+const PERMISSION_DECISION_KEY = 'agentBoard.agentPermissionDecisionMade';
+const MANAGED_PERMISSIONS_KEY = 'agentBoard.managedClaudePermissions';
+const SCOPED_AUTOMATION_KEY = 'agentBoard.scopedAutomationEnabled';
 const execFileAsync = promisify(execFile);
 
 type AgentKind = 'build' | 'qa';
@@ -473,6 +477,30 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await context.globalState.update(ONBOARDING_COMPLETE_KEY, true);
         await postState();
         break;
+      case 'configure-agent-permissions': {
+        const project = (await storage.loadBoardState()).project;
+        const allowlist = buildAgentPermissionAllowlist(project.validationCommands);
+        if (message.action === 'grant') {
+          await storage.grantClaudePermissions(allowlist);
+          await context.workspaceState.update(MANAGED_PERMISSIONS_KEY, allowlist);
+          await context.workspaceState.update(SCOPED_AUTOMATION_KEY, true);
+          await context.workspaceState.update(PERMISSION_DECISION_KEY, true);
+          vscode.window.showInformationMessage('Trellis agent workflow permissions were added to .claude/settings.json.');
+        } else if (message.action === 'revoke') {
+          const managed = context.workspaceState.get<string[]>(MANAGED_PERMISSIONS_KEY) ?? allowlist;
+          await storage.revokeClaudePermissions(managed);
+          await context.workspaceState.update(MANAGED_PERMISSIONS_KEY, undefined);
+          await context.workspaceState.update(SCOPED_AUTOMATION_KEY, false);
+          await context.workspaceState.update(PERMISSION_DECISION_KEY, true);
+          vscode.window.showInformationMessage('Trellis agent workflow permissions were removed. Other Claude settings were preserved.');
+        } else if (message.action === 'decline') {
+          // A decline is deliberately state-only: do not create or modify settings.json.
+          await context.workspaceState.update(SCOPED_AUTOMATION_KEY, false);
+          await context.workspaceState.update(PERMISSION_DECISION_KEY, true);
+        }
+        await postState();
+        break;
+      }
       case 'open-full-board':
         await openBoard(context);
         break;
@@ -752,7 +780,8 @@ function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptP
   if (agent === 'claude') {
     return `claude -p "$(cat ${shellQuote(promptPath)})"`;
   }
-  return `codex exec --skip-git-repo-check "$(cat ${shellQuote(promptPath)})"`;
+  const scopedArgs = codexAutomationArgs(Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)));
+  return `codex exec --skip-git-repo-check${scopedArgs.length ? ` ${scopedArgs.join(' ')}` : ''} "$(cat ${shellQuote(promptPath)})"`;
 }
 
 function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
@@ -968,6 +997,8 @@ async function postState(): Promise<void> {
   const state = await storage.loadBoardState();
   const provider = activeContext ? getSpecProvider(activeContext) : undefined;
   const availableAgents = await detectAvailableAgents();
+  const permissionAllowlist = buildAgentPermissionAllowlist(state.project.validationCommands);
+  const permissionStatus = await storage.getClaudePermissionStatus(permissionAllowlist);
   const message = {
     type: 'state',
     state: {
@@ -982,7 +1013,13 @@ async function postState(): Promise<void> {
           Boolean(activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY)),
           availableAgents.length
         ),
-        autoAssignAgent: await pickAutoAgent()
+        autoAssignAgent: await pickAutoAgent(),
+        agentPermissions: {
+          allowlist: permissionAllowlist,
+          codexMode: codexAutomationArgs(true).join(' '),
+          enabled: permissionStatus.enabled,
+          decisionMade: permissionStatus.enabled || Boolean(activeContext?.workspaceState.get<boolean>(PERMISSION_DECISION_KEY))
+        }
       }
     }
   };
