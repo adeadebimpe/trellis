@@ -835,12 +835,10 @@ function App(): JSX.Element {
                           vscode.postMessage({ type: 'show-terminal', id: draft.id });
                         }}>Show agent terminal</button>
                       )}
-                      {(draft.status === 'done' || draft.status === 'merged') && (
-                        <button role="menuitem" onClick={() => {
-                          setMenuOpen(false);
-                          vscode.postMessage({ type: 'archive-task', id: draft.id });
-                        }}>Archive task</button>
-                      )}
+                      <button role="menuitem" onClick={() => {
+                        setMenuOpen(false);
+                        vscode.postMessage({ type: 'archive-task', id: draft.id });
+                      }}>Archive task</button>
                       <button
                         role="menuitem"
                         className="menuDanger"

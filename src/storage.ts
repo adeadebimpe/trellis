@@ -5,7 +5,7 @@ import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, cl
 import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
-import { selectDoneTasksToArchive } from './archive';
+import { selectMergedTasksToArchive } from './archive';
 import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 
@@ -130,7 +130,7 @@ export class AgentBoardStorage {
       await this.prepareAgentFiles();
       tasks = await this.loadTasks();
     }
-    const archivedIds = selectDoneTasksToArchive(tasks);
+    const archivedIds = selectMergedTasksToArchive(tasks);
     for (const id of archivedIds) {
       await this.archiveTask(id);
     }
@@ -265,10 +265,6 @@ export class AgentBoardStorage {
   async archiveTask(id: string): Promise<void> {
     await this.prepareAgentFiles();
     await this.withTaskLock(id, 'vscode', async () => {
-      const task = await this.readJson<AgentBoardTask>(this.taskUri(id));
-      if (task.status !== 'done' && task.status !== 'merged') {
-        throw new Error(`Only done or merged tasks can be archived. ${id} is ${task.status}.`);
-      }
       await vscode.workspace.fs.rename(this.taskUri(id), vscode.Uri.joinPath(this.boardDir, 'archive', `${id}.json`), { overwrite: true });
     });
     await this.appendRootActivity('vscode', `Archived ${id}.`);
