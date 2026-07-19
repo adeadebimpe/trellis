@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { resolve } from 'node:path';
 import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, heartbeatTaskScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
 import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
@@ -275,6 +276,9 @@ export class AgentBoardStorage {
   }
 
   async removeWorktree(worktreePath: string): Promise<void> {
+    if (resolve(worktreePath) === resolve(this.root.fsPath)) {
+      return; // direct-on-main tasks point at the project root, never remove it.
+    }
     try {
       await execFileAsync('git', ['worktree', 'remove', '--force', worktreePath], { cwd: this.root.fsPath, timeout: 20000 });
     } catch {
@@ -293,6 +297,7 @@ export class AgentBoardStorage {
     const merged: ProjectContext = {
       ...existing,
       ...project,
+      workflowMode: project.workflowMode === 'direct-on-main' ? 'direct-on-main' : 'branch-per-task',
       contextMode: ['lean', 'standard', 'full'].includes(project.contextMode ?? '') ? project.contextMode : (existing.contextMode ?? 'standard'),
       contextProfiles: {
         ...existing.contextProfiles,
@@ -513,6 +518,7 @@ export class AgentBoardStorage {
   private async defaultProjectContext(): Promise<ProjectContext> {
     return {
       version: 1,
+      workflowMode: 'branch-per-task',
       contextMode: 'standard',
       contextProfiles: {},
       contextNotes: '',
@@ -633,6 +639,8 @@ export class AgentBoardStorage {
       dependsOn: [],
       requiredCapabilities: [],
       readyAt: '',
+      workflowMode: undefined,
+      claimWarning: '',
       lastValidation: null,
       shipResult: null,
       lastUpdated: now
@@ -691,6 +699,8 @@ export class AgentBoardStorage {
       dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn : [],
       requiredCapabilities: Array.isArray(task.requiredCapabilities) ? task.requiredCapabilities : [],
       readyAt: task.readyAt ?? '',
+      workflowMode: task.workflowMode === 'direct-on-main' ? 'direct-on-main' : task.workflowMode === 'branch-per-task' ? 'branch-per-task' : undefined,
+      claimWarning: task.claimWarning ?? '',
       lastValidation: task.lastValidation ?? null,
       shipResult: task.shipResult ?? null,
       agentNotes: task.agentNotes ?? ''

@@ -14,6 +14,7 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 export type Priority = 'high' | 'medium' | 'low';
 export type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
+export type WorkflowMode = 'branch-per-task' | 'direct-on-main';
 
 export interface IntakeAttachment {
   name: string;
@@ -107,6 +108,8 @@ export interface AgentBoardTask {
   readyAt?: string;
   worktreeTaskId?: string;
   worktreeBaseSha?: string;
+  workflowMode?: WorkflowMode;
+  claimWarning?: string;
   claimId?: string;
   qaClaimId?: string;
   qaStartedAt?: string;
@@ -150,6 +153,7 @@ export interface ProjectInference {
 
 export interface ProjectContext {
   version: 1;
+  workflowMode?: WorkflowMode;
   contextMode?: 'lean' | 'standard' | 'full';
   contextProfiles?: {
     frontend?: string;

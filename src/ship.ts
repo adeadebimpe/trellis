@@ -34,6 +34,31 @@ export async function shipTask(storage: AgentBoardStorage, task: AgentBoardTask,
   if (task.status !== 'human-review') {
     throw new Error(`Move ${task.id} to Human Review before shipping.`);
   }
+  if (task.workflowMode === 'direct-on-main') {
+    const now = new Date().toISOString();
+    const branch = await tryRun('git', ['branch', '--show-current'], mainRoot) ?? '';
+    const head = await tryRun('git', ['rev-parse', 'HEAD'], mainRoot);
+    const shipResult: ShipResult = {
+      mode: 'local-merge',
+      branch,
+      shippedAt: now,
+      mergedInto: branch || 'project folder',
+      mergeCommit: head
+    };
+    await storage.saveTask({
+      task: {
+        id: task.id,
+        status: 'merged',
+        shipResult,
+        activityLog: [
+          ...(task.activityLog ?? []),
+          { timestamp: now, actor: 'vscode', message: 'Marked direct-on-main task complete; no branch merge was needed.' }
+        ]
+      },
+      expectedLastUpdated
+    });
+    return `${task.id} completed on the project folder; no branch merge was needed.`;
+  }
   if (!task.branchName) {
     throw new Error(`${task.id} has no task branch to ship.`);
   }
