@@ -6,6 +6,7 @@ import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, cl
 import { withLock } from './locks';
 import { ensureAgentBoardIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
+import { inferredArchitectureNotes, inferredContextNotes, parseReadme, shouldReplaceArchitecture, shouldReplaceNotes, shouldReplaceValidation } from './inferenceSummary';
 import { selectMergedTasksToArchive } from './archive';
 import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
 import { assertTaskId, assertTaskLockKey } from './taskIds';
@@ -347,57 +348,27 @@ export class AgentBoardStorage {
     await this.prepareAgentFiles();
     const existing = await this.loadProjectContext();
     const inference = await this.buildProjectInference();
+    inference.generatedNotes = inferredContextNotes(inference);
+    inference.generatedValidation = [...inference.suggestedValidation];
+    // Machine text refreshes on every run; anything the user has edited since
+    // the last seed (no longer equal to it) is preserved untouched.
     const merged: ProjectContext = {
       ...existing,
       inference,
-      validationCommands: existing.validationCommands.length ? existing.validationCommands : inference.suggestedValidation,
-      architectureNotes: existing.architectureNotes.trim()
-        ? existing.architectureNotes
-        : this.inferredArchitectureNotes(inference),
-      // The scan's only visible surface is the Project context box, so seed it
-      // with a readable summary when the user has not written notes yet.
-      contextNotes: (existing.contextNotes ?? '').trim()
-        ? existing.contextNotes
-        : this.inferredContextNotes(inference),
+      validationCommands: shouldReplaceValidation(existing.validationCommands, existing.inference)
+        ? inference.suggestedValidation
+        : existing.validationCommands,
+      architectureNotes: shouldReplaceArchitecture(existing.architectureNotes, existing.inference)
+        ? inferredArchitectureNotes(inference)
+        : existing.architectureNotes,
+      contextNotes: shouldReplaceNotes(existing.contextNotes, existing.inference)
+        ? inference.generatedNotes
+        : existing.contextNotes,
       lastUpdated: new Date().toISOString()
     };
     await this.writeJson(this.projectUri(), merged);
     await this.appendRootActivity('vscode', 'Inferred project context.');
     return merged;
-  }
-
-  private inferredContextNotes(inference: ProjectInference): string {
-    const lines: string[] = [];
-    if (inference.likelyStack.length) {
-      lines.push(`Stack: ${inference.likelyStack.join(', ')}`);
-    }
-    if (inference.packageManager) {
-      lines.push(`Package manager: ${inference.packageManager}`);
-    }
-    if (inference.scripts.length) {
-      lines.push(`Scripts: ${inference.scripts.join(', ')}`);
-    }
-    if (inference.detectedFiles.length) {
-      lines.push(`Key files: ${inference.detectedFiles.join(', ')}`);
-    }
-    if (inference.suggestedValidation.length) {
-      lines.push(`Validation: ${inference.suggestedValidation.join(', ')}`);
-    }
-    return lines.join('\n');
-  }
-
-  private inferredArchitectureNotes(inference: ProjectInference): string {
-    const lines: string[] = [];
-    if (inference.likelyStack.length) {
-      lines.push(`Detected stack: ${inference.likelyStack.join(', ')}.`);
-    }
-    if (inference.packageManager) {
-      lines.push(`Package manager: ${inference.packageManager}.`);
-    }
-    if (inference.detectedFiles.length) {
-      lines.push(`Key files: ${inference.detectedFiles.join(', ')}.`);
-    }
-    return lines.join('\n');
   }
 
   async runAction(id: string, action: string, expectedLastUpdated?: string): Promise<AgentBoardTask> {
@@ -580,29 +551,57 @@ export class AgentBoardStorage {
       'pnpm-lock.yaml',
       'yarn.lock',
       'package-lock.json',
+      'bun.lockb',
       'tsconfig.json',
       'vite.config.ts',
       'next.config.js',
+      'next.config.ts',
+      'esbuild.mjs',
+      'README.md',
+      'go.mod',
+      'pyproject.toml',
+      'requirements.txt',
+      'Cargo.toml',
       'src/extension.ts',
       'webview/main.tsx'
     ]);
-    const scripts = await this.readPackageScripts();
+    const pkg = await this.readPackageJson();
+    const scripts = Object.keys(pkg.scripts ?? {}).sort();
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    const topLevelDirs = await this.readTopLevelDirs();
+
     const likelyStack = new Set<string>();
-    if (detectedFiles.includes('package.json')) likelyStack.add('Node.js');
+    if (pkg.engines?.vscode || pkg.contributes) {
+      likelyStack.add(topLevelDirs.includes('webview') || deps.react ? 'VS Code extension (React webview UI)' : 'VS Code extension');
+    }
     if (detectedFiles.includes('tsconfig.json')) likelyStack.add('TypeScript');
-    if (detectedFiles.includes('src/extension.ts')) likelyStack.add('VS Code Extension API');
-    if (detectedFiles.includes('webview/main.tsx')) likelyStack.add('React webview');
-    if (detectedFiles.includes('vite.config.ts')) likelyStack.add('Vite');
-    if (detectedFiles.includes('next.config.js')) likelyStack.add('Next.js');
+    else if (detectedFiles.includes('package.json')) likelyStack.add('Node.js');
+    if (deps.next || detectedFiles.includes('next.config.js') || detectedFiles.includes('next.config.ts')) likelyStack.add('Next.js');
+    else if (deps.react && !likelyStack.has('VS Code extension (React webview UI)')) likelyStack.add('React');
+    if (deps.vue) likelyStack.add('Vue');
+    if (deps.svelte) likelyStack.add('Svelte');
+    if (deps.electron) likelyStack.add('Electron');
+    if (deps.express) likelyStack.add('Express');
+    if (deps.fastify) likelyStack.add('Fastify');
+    if (deps.tailwindcss) likelyStack.add('Tailwind CSS');
+    if (deps.vite || detectedFiles.includes('vite.config.ts')) likelyStack.add('Vite');
+    if (deps.esbuild || detectedFiles.includes('esbuild.mjs')) likelyStack.add('esbuild');
+    if (detectedFiles.includes('go.mod')) likelyStack.add('Go');
+    if (detectedFiles.includes('Cargo.toml')) likelyStack.add('Rust');
+    if (detectedFiles.includes('pyproject.toml') || detectedFiles.includes('requirements.txt')) likelyStack.add('Python');
 
     const packageManager = detectedFiles.includes('pnpm-lock.yaml')
       ? 'pnpm'
       : detectedFiles.includes('yarn.lock')
         ? 'yarn'
-        : 'npm';
+        : detectedFiles.includes('bun.lockb')
+          ? 'bun'
+          : 'npm';
     const suggestedValidation = scripts
       .filter((script) => ['compile', 'typecheck', 'build', 'test', 'lint'].includes(script))
       .map((script) => `${packageManager} run ${script}`);
+
+    const readme = await this.readReadmeSummary();
 
     return {
       packageManager,
@@ -610,7 +609,12 @@ export class AgentBoardStorage {
       detectedFiles,
       likelyStack: [...likelyStack],
       suggestedValidation,
-      lastInferred: new Date().toISOString()
+      lastInferred: new Date().toISOString(),
+      projectName: pkg.displayName ?? pkg.name,
+      projectDescription: pkg.description,
+      readmeTitle: readme.title,
+      readmeSummary: readme.summary,
+      topLevelDirs
     };
   }
 
@@ -627,10 +631,41 @@ export class AgentBoardStorage {
     return found;
   }
 
-  private async readPackageScripts(): Promise<string[]> {
+  private async readPackageJson(): Promise<{
+    name?: string;
+    displayName?: string;
+    description?: string;
+    scripts?: Record<string, string>;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    engines?: Record<string, string>;
+    contributes?: unknown;
+  }> {
     try {
-      const packageJson = JSON.parse(decoder.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.root, 'package.json')))) as { scripts?: Record<string, string> };
-      return Object.keys(packageJson.scripts ?? {}).sort();
+      return JSON.parse(decoder.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.root, 'package.json'))));
+    } catch {
+      return {};
+    }
+  }
+
+  private async readReadmeSummary(): Promise<{ title?: string; summary?: string }> {
+    try {
+      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.root, 'README.md'));
+      return parseReadme(decoder.decode(bytes.slice(0, 4096)));
+    } catch {
+      return {};
+    }
+  }
+
+  private async readTopLevelDirs(): Promise<string[]> {
+    const ignored = new Set(['node_modules', 'dist', 'out', 'build', '.git', '.agent-board', '.vscode', '.github']);
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(this.root);
+      return entries
+        .filter(([name, type]) => type === vscode.FileType.Directory && !ignored.has(name) && !name.startsWith('.'))
+        .map(([name]) => name)
+        .sort()
+        .slice(0, 10);
     } catch {
       return [];
     }

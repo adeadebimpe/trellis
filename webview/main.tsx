@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo } from './icons';
+import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
 
 type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done' | 'merged';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
@@ -99,6 +99,13 @@ interface ProjectContext {
     likelyStack: string[];
     suggestedValidation: string[];
     lastInferred: string;
+    projectName?: string;
+    projectDescription?: string;
+    readmeTitle?: string;
+    readmeSummary?: string;
+    topLevelDirs?: string[];
+    generatedNotes?: string;
+    generatedValidation?: string[];
   };
   lastUpdated: string;
 }
@@ -194,6 +201,8 @@ function App(): JSX.Element {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [projectSaveState, setProjectSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [setupWorkflowMode, setSetupWorkflowMode] = useState<WorkflowMode>('branch-per-task');
+  const [inferBusy, setInferBusy] = useState(false);
+  const [projectOnboarding, setProjectOnboarding] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState<'quick' | 'prd' | 'bug'>('quick');
   const [createText, setCreateText] = useState('');
@@ -263,6 +272,7 @@ function App(): JSX.Element {
       if (event.data.type === 'error') {
         setSaveState('error');
         setProjectSaveState('error');
+        setInferBusy(false);
         setReviewSubmitting(false);
         setPrdSplitting(false);
         setCreateBusy(null);
@@ -274,10 +284,32 @@ function App(): JSX.Element {
           window.setTimeout(() => setProjectSaveState('idle'), 2200);
         }
       }
+      if (event.data.type === 'inferred-project') {
+        setInferBusy(false);
+        const project = event.data.project as ProjectContext;
+        if (!projectDirty.current) {
+          setProjectDraft(cloneProject(project));
+          projectSentVersion.current = projectEditVersion.current;
+          setProjectSaveState('saved');
+          window.setTimeout(() => setProjectSaveState('idle'), 2200);
+        } else {
+          // The user typed during the round trip: keep their keystrokes and
+          // take only the scan-owned fields (plus seeds for empty fields).
+          setProjectDraft((current) => current ? {
+            ...current,
+            inference: project.inference,
+            architectureNotes: project.architectureNotes,
+            lastUpdated: project.lastUpdated,
+            contextNotes: current.contextNotes.trim() ? current.contextNotes : project.contextNotes,
+            validationCommands: current.validationCommands.length ? current.validationCommands : project.validationCommands
+          } : cloneProject(project));
+        }
+      }
       if (event.data.type === 'open-project-context') {
         const project = event.data.project ?? state?.project;
         if (project) {
           setProjectDraft(cloneProject(project));
+          setProjectOnboarding(event.data.source === 'onboarding');
           setProjectOpen(true);
         }
       }
@@ -307,6 +339,7 @@ function App(): JSX.Element {
         setDraft(null);
         setProjectDraft(null);
         setProjectOpen(false);
+        setProjectOnboarding(false);
         setCreateOpen(false);
       }
       if (event.data.type === 'workspace-files') {
@@ -517,6 +550,7 @@ function App(): JSX.Element {
     }
     setProjectDraft(null);
     setProjectOpen(false);
+    setProjectOnboarding(false);
   };
 
   const boardColumns = state?.board.columns.filter((column) =>
@@ -633,6 +667,7 @@ function App(): JSX.Element {
                     setMenuOpen(false);
                     if (state?.project) {
                       setProjectDraft(cloneProject(state.project));
+                      setProjectOnboarding(false);
                       setProjectOpen(true);
                     }
                   }}>Project context</button>
@@ -1208,34 +1243,48 @@ function App(): JSX.Element {
       )}
 
       {projectDraft && !draft && (
-        <section className="detailPage" aria-label="Project context">
+        <>
+          {hostMode === 'panel' && <div className="drawerScrim" onClick={closeProject} />}
+          <section className="detailPage projectPage" aria-label="Project context">
           <div className="detailNav">
             <div className="detailNavLeft">
-              <button className="iconButton" aria-label="Back to board" title="Back to board" onClick={closeProject}>
-                <ArrowLeftIcon />
+              <button
+                className="iconButton"
+                aria-label={hostMode === 'panel' ? 'Close' : 'Back to board'}
+                title={hostMode === 'panel' ? 'Close' : 'Back to board'}
+                onClick={closeProject}
+              >
+                {hostMode === 'panel' ? <XIcon /> : <ArrowLeftIcon />}
               </button>
               <span className="navTitle">Project Context</span>
             </div>
-            <div className="detailNavRight">
-              <button className="ghost" onClick={closeProject}>Skip for now</button>
-            </div>
+            {projectOnboarding && (
+              <div className="detailNavRight">
+                <button className="ghost" onClick={closeProject}>Skip for now</button>
+              </div>
+            )}
           </div>
 
           <div className="detailBody">
-          <div className="contextIntro">
-            <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
-          </div>
-
           <div className="contextActions">
             <button
               className="primary"
-              disabled={projectSaveState === 'saving'}
+              disabled={inferBusy}
               onClick={() => {
-                setProjectSaveState('saving');
-                vscode.postMessage({ type: 'infer-project' });
+                if (projectSaveTimer.current !== undefined) {
+                  window.clearTimeout(projectSaveTimer.current);
+                  projectSaveTimer.current = undefined;
+                }
+                const pendingDraft = projectDirty.current ? projectDraftRef.current : undefined;
+                if (pendingDraft) {
+                  projectSentVersion.current = projectEditVersion.current;
+                  projectDirty.current = false;
+                }
+                setInferBusy(true);
+                vscode.postMessage({ type: 'infer-project', project: pendingDraft });
               }}
             >
-              Infer from repo
+              {inferBusy ? 'Scanning repo…' : 'Infer from repo'}
             </button>
             <p className={`autosaveStatus ${projectSaveState}`} role="status" aria-live="polite">
               {projectSaveState === 'saving' && 'Saving changes…'}
@@ -1253,23 +1302,48 @@ function App(): JSX.Element {
             <p className="fieldHint">Changes apply to new task claims. Existing tasks stay where they started.</p>
           </div>
 
-          <div className="contextBlock">
-            <Field
-              label="Project context"
-              placeholder="Product overview, architecture, conventions, constraints, links…"
-              value={projectDraft.contextNotes ?? ''}
-              onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
-            />
-            <p className="fieldHint">Shared with agents during PRD generation. Stored in .agent-board/project.json.</p>
+          <div className="contextIntro">
+            <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
           </div>
 
-          <div className="contextBlock">
-            <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
-            <p className="fieldHint">Used by QA runs, one per line.</p>
+          <div className="fields contextFields">
+            <div>
+              <Field
+                label="Project context"
+                placeholder="Product overview, architecture, conventions, constraints, links…"
+                value={projectDraft.contextNotes ?? ''}
+                onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
+              />
+              <p className="fieldHint">Shared with agents during PRD generation. Stored in .agent-board/project.json.</p>
+            </div>
+
+            <div>
+              <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
+              <p className="fieldHint">Used by QA runs, one per line.</p>
+            </div>
           </div>
 
+          {projectDraft.inference?.lastInferred && (
+            <div className="detailSections repoScan">
+              <h4 className="repoScanTitle">Repo scan · {timeAgo(projectDraft.inference.lastInferred)}</h4>
+              {(projectDraft.inference.projectName || projectDraft.inference.projectDescription) && (
+                <DetailText
+                  label="Project"
+                  text={[projectDraft.inference.projectName, projectDraft.inference.projectDescription].filter(Boolean).join(' — ')}
+                />
+              )}
+              <DetailText label="README" text={projectDraft.inference.readmeSummary ?? ''} />
+              <DetailText label="Stack" text={projectDraft.inference.likelyStack.join(', ')} />
+              <DetailText label="Package manager" text={projectDraft.inference.packageManager} />
+              <DetailText label="Layout" text={(projectDraft.inference.topLevelDirs ?? []).map((dir) => `${dir}/`).join(', ')} />
+              <DetailText label="Key files" text={projectDraft.inference.detectedFiles.join(', ')} />
+              <DetailList label="Suggested validation" items={projectDraft.inference.suggestedValidation} />
+            </div>
+          )}
+
           </div>
-        </section>
+          </section>
+        </>
       )}
     </main>
   );

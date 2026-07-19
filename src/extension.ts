@@ -446,11 +446,17 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         webview.postMessage({ type: 'saved-project' });
         await postState();
         break;
-      case 'infer-project':
-        await storage.inferProjectContext();
-        webview.postMessage({ type: 'saved-project' });
+      case 'infer-project': {
+        // Flush the webview's dirty draft inside the same handler so the scan
+        // reads it from disk — two separate messages could interleave.
+        if (message.project) {
+          await storage.saveProjectContext(message.project);
+        }
+        const project = await storage.inferProjectContext();
+        webview.postMessage({ type: 'inferred-project', project });
         await postState();
         break;
+      }
       case 'sign-in-agents':
         await chooseAgentSignIn();
         break;
@@ -461,7 +467,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         signInCodexCli();
         await detectAvailableAgents(true);
         await postState();
-        webview.postMessage({ type: 'open-project-context', project: (await storage.loadBoardState()).project });
+        webview.postMessage({ type: 'open-project-context', source: 'onboarding', project: (await storage.loadBoardState()).project });
         break;
       case 'sign-in-claude':
         await saveWorkflowChoice(storage, message.workflowMode);
@@ -470,7 +476,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         signInClaudeCode();
         await detectAvailableAgents(true);
         await postState();
-        webview.postMessage({ type: 'open-project-context', project: (await storage.loadBoardState()).project });
+        webview.postMessage({ type: 'open-project-context', source: 'onboarding', project: (await storage.loadBoardState()).project });
         break;
       case 'configure-spec-provider':
         await configureSpecProvider(context);

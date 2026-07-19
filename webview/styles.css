@@ -1355,6 +1355,38 @@ body[data-host='panel'] .detailPage {
   z-index: 5;
 }
 
+/* Project context gets full drawer chrome in the panel host: a dimmed
+   click-to-close scrim under it and a slide-in entrance. */
+.drawerScrim {
+  animation: scrimIn 0.18s ease;
+  background: rgba(0, 0, 0, 0.4);
+  inset: 0;
+  position: fixed;
+  z-index: 4;
+}
+
+@keyframes scrimIn {
+  from { opacity: 0; }
+}
+
+body[data-host='panel'] .detailPage.projectPage {
+  animation: drawerIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes drawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawerScrim,
+  body[data-host='panel'] .detailPage.projectPage {
+    animation: none;
+  }
+}
+
 .detailNav {
   align-items: center;
   background: var(--surface);
@@ -1762,7 +1794,7 @@ input.textInput {
   display: grid;
   gap: 10px;
   grid-template-columns: max-content 1fr;
-  margin: 16px 0 2px;
+  margin: 0 0 12px;
 }
 
 .contextIntro {
@@ -1782,20 +1814,29 @@ input.textInput {
   margin: 0;
 }
 
-.contextBlock {
-  margin-top: 16px;
+.contextFields {
+  margin: 16px 0 18px;
 }
 
-.contextBlock label {
+.contextFields label {
   width: 100%;
+}
+
+.contextFields .fieldHint {
+  margin-top: 4px;
+}
+
+.repoScanTitle {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
 }
 
 .bigInput {
   min-height: 118px;
-}
-
-.contextBlock textarea,
-.bigInput {
   resize: none;
 }
 

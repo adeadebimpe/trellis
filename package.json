@@ -117,7 +117,8 @@
     "test:scripts": "node tests/scripts.test.mjs",
     "test:lifecycle": "node tests/taskLifecycle.test.mjs",
     "test:locks": "node tests/locks.test.mjs",
-    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks",
+    "test:inference": "node tests/inference.test.mjs",
+    "test": "npm run test:prd && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks && npm run test:inference",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"

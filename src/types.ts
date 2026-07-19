@@ -148,6 +148,16 @@ export interface ProjectInference {
   likelyStack: string[];
   suggestedValidation: string[];
   lastInferred: string;
+  projectName?: string;
+  projectDescription?: string;
+  readmeTitle?: string;
+  readmeSummary?: string;
+  topLevelDirs?: string[];
+  // Exact machine-generated text last seeded into contextNotes /
+  // validationCommands; re-running the scan only overwrites fields the
+  // user has not edited since (still equal to these).
+  generatedNotes?: string;
+  generatedValidation?: string[];
   [key: string]: unknown;
 }
 
