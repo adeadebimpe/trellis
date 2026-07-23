@@ -1320,7 +1320,7 @@ function App(): JSX.Element {
               const awaitingChatQa = run.surface === 'chat' && draft.status === 'ready-for-qa';
               return (
               <div className="terminalBanner" role="status">
-                {!awaitingChatQa && <span className="terminalBannerSpin" aria-hidden="true"><LoaderPinwheelIcon /></span>}
+                {!awaitingChatQa && <span className="terminalBannerSpin" aria-hidden="true" />}
                 <span className="terminalBannerText">
                   {awaitingChatQa
                     ? `Build finished in ${run.agent} chat. QA is reserved for that chat; no terminal will start.`
