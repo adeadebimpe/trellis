@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const [taskId, ...noteParts] = process.argv.slice(2);
@@ -22,14 +22,21 @@ await runScript(async () => {
     if (!current.lastValidation || !current.lastValidation.passed) {
       throw fail(4, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
     }
+    if (current.lastValidation.phase !== 'qa' || current.lastValidation.claimId !== current.qaClaimId || current.lastValidation.ranAt <= current.qaStartedAt) {
+      throw fail(4, 'QA must run fresh validation after QA starts.');
+    }
+    if (!sameSnapshot(codeSnapshot(current.worktreePath || mainRoot), current.lastValidation.snapshot)) {
+      throw fail(4, 'Code changed after QA validation. Re-run validation.');
+    }
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
-    current.status = 'human-review';
+    current.status = 'done';
+    delete current.activeRun;
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.qaNotes.push({ timestamp: now, actor, message: note });
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
-    current.activityLog.push({ timestamp: now, actor, message: 'QA passed. Moved task to human-review.' });
+    current.activityLog.push({ timestamp: now, actor, message: 'QA passed. Moved task to done.' });
     await writeJson(path, current);
     return current;
   });

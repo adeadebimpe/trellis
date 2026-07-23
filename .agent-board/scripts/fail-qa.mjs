@@ -13,12 +13,19 @@ await runScript(async () => {
 
   const task = await withTaskLock(mainRoot, taskId, 'fail-qa', async () => {
     const current = await readJson(path);
+    if (current.status !== 'qa-running') {
+      throw fail(2, 'Task must be qa-running to fail QA. Current status: ' + current.status + '.');
+    }
+    if (!current.qaClaimId) {
+      throw fail(3, 'Task has no active QA claim. Start QA again before recording a failure.');
+    }
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
     current.status = 'failed-qa';
+    delete current.activeRun;
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
-    current.qaNotes.push({ timestamp: now, actor, message: reason });
+    current.qaNotes.push({ timestamp: now, actor, claimId: current.qaClaimId, message: reason });
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
     current.activityLog.push({ timestamp: now, actor, message: 'QA failed: ' + reason });
     await writeJson(path, current);

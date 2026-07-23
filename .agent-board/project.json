@@ -1,11 +1,12 @@
 {
   "version": 1,
+  "workflowMode": "branch-per-task",
   "contextMode": "standard",
   "contextProfiles": {},
-  "contextNotes": "Stack: Node.js, TypeScript, VS Code Extension API, React webview\nPackage manager: npm\nScripts: build, compile, package, test, test:archive, test:gitignore, test:onboarding, test:prd, test:scripts, typecheck, watch\nKey files: package.json, package-lock.json, tsconfig.json, src/extension.ts, webview/main.tsx\nValidation: npm run build, npm run compile, npm run test, npm run typecheck",
+  "contextNotes": "",
   "overview": "Describe what this project does, who it serves, and the product constraints agents should understand before building tasks.",
   "goals": [],
-  "architectureNotes": "Detected stack: Node.js, TypeScript, VS Code Extension API, React webview.\nPackage manager: npm.\nKey files: package.json, package-lock.json, tsconfig.json, src/extension.ts, webview/main.tsx.",
+  "architectureNotes": "",
   "codingRules": [
     "Follow existing project patterns before introducing new abstractions.",
     "Keep changes scoped to the active Trellis task.",
@@ -16,12 +17,17 @@
     "Use project validationCommands when deciding what to run.",
     "Record any assumptions in the task activityLog or agentNotes."
   ],
-  "validationCommands": [
-    "npm run build",
+  "validationCommands": [],
+  "approvedValidationCommands": [
     "npm run compile",
-    "npm run test",
-    "npm run typecheck"
+    "npm run test:permissions",
+    "npm run test:handoff",
+    "npm run test:lifecycle",
+    "npm run typecheck",
+    "npm run build",
+    "npm run test"
   ],
+  "agentCapabilities": {},
   "designRules": [],
   "glossary": [],
   "inference": {
@@ -33,7 +39,12 @@
       "test",
       "test:archive",
       "test:gitignore",
+      "test:handoff",
+      "test:inference",
+      "test:lifecycle",
+      "test:locks",
       "test:onboarding",
+      "test:permissions",
       "test:prd",
       "test:scripts",
       "typecheck",
@@ -43,14 +54,15 @@
       "package.json",
       "package-lock.json",
       "tsconfig.json",
+      "esbuild.mjs",
+      "README.md",
       "src/extension.ts",
       "webview/main.tsx"
     ],
     "likelyStack": [
-      "Node.js",
+      "VS Code extension (React webview UI)",
       "TypeScript",
-      "VS Code Extension API",
-      "React webview"
+      "esbuild"
     ],
     "suggestedValidation": [
       "npm run build",
@@ -58,7 +70,19 @@
       "npm run test",
       "npm run typecheck"
     ],
-    "lastInferred": "2026-07-19T13:17:33.707Z"
+    "lastInferred": "2026-07-19T23:57:17.328Z",
+    "projectName": "Trellis – Agent Board",
+    "projectDescription": "Structure autonomous coding work from task to verified code.",
+    "readmeTitle": "Trellis",
+    "readmeSummary": "Structure autonomous coding work from task to verified code.",
+    "topLevelDirs": [
+      "dazzle",
+      "docs",
+      "media",
+      "src",
+      "tests",
+      "webview"
+    ]
   },
-  "lastUpdated": "2026-07-19T13:17:33.707Z"
+  "lastUpdated": "2026-07-19T23:57:17.328Z"
 }

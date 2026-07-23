@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -59,11 +59,32 @@ await runScript(async () => {
       ? project.validationCommands
       : project.inference?.suggestedValidation ?? [];
 
+  const approved = new Set([
+    ...(Array.isArray(project.validationCommands) ? project.validationCommands : []),
+    ...(Array.isArray(project.approvedValidationCommands) ? project.approvedValidationCommands : [])
+  ]);
+  const unapproved = commands.filter((command) => !approved.has(command));
+  if (unapproved.length) {
+    throw fail(2, 'Refusing unapproved validation command(s): ' + unapproved.join(', ') + '. Add exact commands to project.approvedValidationCommands after review.');
+  }
+
   if (!commands.length) {
     throw fail(2, 'No validation commands configured on the task or project. Add validationCommands first.');
   }
 
   const cwd = task.worktreePath || mainRoot;
+  const phase = task.status === 'qa-running' ? 'qa' : task.status === 'building' ? 'build' : '';
+  if (!phase) {
+    throw fail(2, 'Validation may only run while a task is building or qa-running.');
+  }
+  const claimId = phase === 'qa' ? task.qaClaimId : task.claimId;
+  if (!claimId) {
+    throw fail(2, 'Task has no active claim. Claim the task again before validation.');
+  }
+  const snapshotBefore = codeSnapshot(cwd);
+  if (snapshotBefore.git && !snapshotBefore.clean) {
+    throw fail(2, 'Commit or remove working-tree changes before validation.');
+  }
   console.log('Running ' + commands.length + ' validation command(s) in ' + cwd);
   const results = [];
   for (const command of commands) {
@@ -75,10 +96,18 @@ await runScript(async () => {
 
   const passed = results.every((result) => result.exitCode === 0);
   const ranAt = new Date().toISOString();
+  const snapshotAfter = codeSnapshot(cwd);
+  if (!sameSnapshot(snapshotBefore, snapshotAfter)) {
+    throw fail(3, 'Code changed while validation was running; results were not recorded.');
+  }
 
   await withTaskLock(mainRoot, taskId, 'run-validation', async () => {
     const fresh = await readJson(path);
-    fresh.lastValidation = { ranAt, passed, results };
+    const freshClaimId = phase === 'qa' ? fresh.qaClaimId : fresh.claimId;
+    if (fresh.status !== task.status || freshClaimId !== claimId || (fresh.worktreePath || mainRoot) !== cwd) {
+      throw fail(3, 'Task ownership changed while validation was running; results were not recorded.');
+    }
+    fresh.lastValidation = { ranAt, passed, results, phase, claimId, snapshot: snapshotAfter };
     fresh.qaEvidence = Array.isArray(fresh.qaEvidence) ? fresh.qaEvidence : [];
     for (const result of results) {
       fresh.qaEvidence.push((result.exitCode === 0 ? 'PASS' : 'FAIL (exit ' + result.exitCode + ')') + ': ' + result.command);

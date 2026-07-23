@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { fail, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
+import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
   const taskId = process.argv[2];
@@ -17,6 +17,13 @@ await runScript(async () => {
     }
     if (!current.lastValidation || !current.lastValidation.passed) {
       throw fail(3, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+    }
+    if (current.lastValidation.phase !== 'build' || current.lastValidation.claimId !== current.claimId) {
+      throw fail(3, 'Validation does not belong to the current build claim. Re-run validation.');
+    }
+    const snapshot = codeSnapshot(current.worktreePath || mainRoot);
+    if (!sameSnapshot(snapshot, current.lastValidation.snapshot)) {
+      throw fail(3, 'Code changed after validation. Commit changes and re-run validation.');
     }
     if (current.claimedAt && current.lastValidation.ranAt <= current.claimedAt) {
       throw fail(3, 'Validation is older than the current claim. Re-run: node .agent-board/scripts/run-validation.mjs ' + taskId);
