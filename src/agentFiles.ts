@@ -875,6 +875,14 @@ await runScript(async () => {
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.qaNotes.push({ timestamp: now, actor, claimId: current.qaClaimId, message: reason });
+    current.comments = Array.isArray(current.comments) ? current.comments : [];
+    current.comments.push({
+      id: current.id + '-' + Date.now(),
+      author: actor,
+      phase: 'failed-qa',
+      message: reason,
+      createdAt: now
+    });
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
     current.activityLog.push({ timestamp: now, actor, message: 'QA failed: ' + reason });
     await writeJson(path, current);

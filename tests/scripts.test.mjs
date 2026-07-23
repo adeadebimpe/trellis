@@ -231,7 +231,14 @@ result = runScript(repo, 'pass-qa.mjs', ['TASK-002']);
 assert.equal(result.status, 4, 'pass-qa must refuse when validation failed');
 result = runScript(repo, 'fail-qa.mjs', ['TASK-002', 'validation failed']);
 assert.equal(result.status, 0, result.stderr);
-assert.equal(readTask(repo, 'TASK-002').status, 'failed-qa');
+const failedQaTask = readTask(repo, 'TASK-002');
+assert.equal(failedQaTask.status, 'failed-qa');
+assert.equal(failedQaTask.comments.length, 1, 'fail-qa must append one visible comment');
+assert.equal(failedQaTask.comments[0].author, 'claude');
+assert.equal(failedQaTask.comments[0].phase, 'failed-qa');
+assert.equal(failedQaTask.comments[0].message, 'validation failed');
+assert.equal(failedQaTask.qaNotes.at(-1).message, 'validation failed', 'durable QA notes remain intact');
+assert.match(failedQaTask.activityLog.at(-1).message, /QA failed: validation failed/, 'activity evidence remains intact');
 
 // Locking: a fresh lock blocks the claim; a stale lock (>30s) is stolen.
 const lockDir = join(repo, '.trellis', 'locks', 'TASK-003');
