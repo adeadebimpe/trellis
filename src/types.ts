@@ -85,7 +85,9 @@ export interface AgentBoardTask {
   qaAgent: AssignedAgent;
   brief: string;
   description: string;
+  descriptionRichText?: string;
   acceptanceCriteria: string[];
+  acceptanceCriteriaRichText?: string;
   qaChecklist: string[];
   designQaChecklist: string[];
   validationCommands: string[];

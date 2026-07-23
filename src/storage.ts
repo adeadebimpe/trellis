@@ -246,6 +246,42 @@ export class AgentBoardStorage {
     return attachments;
   }
 
+  async savePastedIntakeAttachments(
+    taskId: string,
+    files: Array<{ name: string; mediaType: string; base64: string }>
+  ): Promise<IntakeAttachment[]> {
+    assertTaskId(taskId);
+    if (!files.length) return [];
+    const destinationDir = vscode.Uri.joinPath(this.boardDir, 'attachments', taskId);
+    await this.ensureDir(destinationDir);
+    const attachments: IntakeAttachment[] = [];
+    for (const [index, file] of files.entries()) {
+      const safeName = String(file.name || `pasted-${index + 1}`)
+        .replace(/[/\\\0]/g, '-')
+        .replace(/^\.+/, '') || `pasted-${index + 1}`;
+      const bytes = Buffer.from(String(file.base64 ?? ''), 'base64');
+      if (!bytes.length) throw new Error(`${safeName} could not be read.`);
+      if (bytes.length > 10 * 1024 * 1024) throw new Error(`${safeName} is larger than the 10 MB attachment limit.`);
+      const dot = safeName.lastIndexOf('.');
+      const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
+      const extension = dot > 0 ? safeName.slice(dot) : '';
+      let storedName = safeName;
+      let destination = vscode.Uri.joinPath(destinationDir, storedName);
+      for (let suffix = 2; await this.exists(destination); suffix += 1) {
+        storedName = `${stem}-${suffix}${extension}`;
+        destination = vscode.Uri.joinPath(destinationDir, storedName);
+      }
+      await vscode.workspace.fs.writeFile(destination, bytes);
+      attachments.push({
+        name: storedName,
+        path: vscode.workspace.asRelativePath(destination, false),
+        mediaType: file.mediaType || mediaTypeForName(safeName),
+        size: bytes.length
+      });
+    }
+    return attachments;
+  }
+
   async saveTask(request: SaveTaskRequest, actor = 'vscode'): Promise<AgentBoardTask> {
     await this.prepareAgentFiles();
     return this.withTaskLock(request.task.id, actor, () => this.saveTaskLocked(request, actor));

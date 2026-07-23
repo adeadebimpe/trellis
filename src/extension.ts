@@ -309,6 +309,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         break;
       }
       case 'create-intake': {
+        const requestId = String(message.requestId ?? '');
         const text = String(message.intake?.text ?? '').trim();
         if (!text) throw new Error('Add some source material before creating a draft.');
         const sourceUrl = String(message.intake?.sourceUrl ?? '').trim();
@@ -334,6 +335,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           qaAgent: autoQaAgent,
           intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments: [], intent, createdAt: now }
         });
+        webview.postMessage({ type: 'intake-started', requestId, id: task.id });
         const paths = Array.isArray(message.intake?.attachmentPaths)
           ? Array.from(new Set<string>(
             message.intake.attachmentPaths
@@ -342,10 +344,18 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           ))
           : [];
         const copied = await storage.copyIntakeAttachments(task.id, paths);
+        const pastedFiles = Array.isArray(message.intake?.pastedFiles)
+          ? message.intake.pastedFiles
+            .filter((file: any) => file && typeof file.name === 'string' && typeof file.base64 === 'string')
+            .filter((file: any) => /^(?:image\/(?:png|jpeg|gif|webp)|text\/(?:plain|markdown))$/i.test(String(file.mediaType ?? '')))
+            .slice(0, 12)
+          : [];
+        const pasted = await storage.savePastedIntakeAttachments(task.id, pastedFiles);
         // @mentioned workspace files ride along as intake attachments so the PRD
         // prompt treats them as user-provided evidence (never fabricated content).
         const attachments = [
           ...copied,
+          ...pasted,
           ...mentions
             .filter((path) => !paths.includes(path))
             .map((path) => ({ name: path.split('/').pop() ?? path, path, mediaType: 'text/x-workspace-file', size: 0 }))
@@ -365,9 +375,9 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await postState();
         // Chat-created tasks advance to Ready for Agent once the PRD drafts;
         // the user reviews it in the detail page rather than a Backlog hold.
-        await runGenerateSpecAction(context, task.id, withIntake.lastUpdated);
+        const generated = await runGenerateSpecAction(context, task.id, withIntake.lastUpdated);
         await postState();
-        webview.postMessage({ type: 'intake-created', id: task.id });
+        webview.postMessage({ type: 'intake-created', requestId, id: task.id, generated });
         break;
       }
       case 'workspace-files': {
@@ -610,7 +620,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
     }
     const messageText = error instanceof Error ? error.message : String(error);
     vscode.window.showErrorMessage(messageText);
-    webview.postMessage({ type: 'error', message: messageText });
+    webview.postMessage({ type: 'error', message: messageText, requestId: message?.requestId });
   }
 }
 
@@ -673,6 +683,8 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
             id,
             title: useAiTitle ? aiTitle! : currentTitle || derivedTitle,
             ...specPatch,
+            descriptionRichText: undefined,
+            acceptanceCriteriaRichText: undefined,
             ...(advanceToReady ? { status: 'ready-for-agent' as const } : {}),
             activityLog: [
               ...(task.activityLog ?? []),

@@ -511,6 +511,66 @@ h1 {
   outline: none;
 }
 
+.intakeQueue {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 116px;
+  overflow-y: auto;
+}
+
+.intakeQueueItem {
+  align-items: center;
+  background: color-mix(in srgb, var(--badge-bg) 76%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.intakeQueueItem:not(:disabled) {
+  cursor: pointer;
+}
+
+.intakeQueueItem:not(:disabled):hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.intakeQueueState {
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.intake-done .intakeQueueState {
+  color: var(--green);
+}
+
+.intake-error .intakeQueueState,
+.intakeNotice {
+  color: var(--red);
+}
+
+.intakeQueueSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.intakeNotice {
+  font-size: 11px;
+  margin: 0;
+}
+
 .attachmentChips {
   display: flex;
   flex-wrap: wrap;
@@ -1775,6 +1835,86 @@ input.textInput {
 
 .fieldSection textarea {
   width: 100%;
+}
+
+.richEditor {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  margin: 0 -10px;
+  overflow: hidden;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.richEditor:hover {
+  border-color: var(--line);
+}
+
+.richEditor:focus-within {
+  background: var(--input-bg);
+  border-color: var(--accent);
+}
+
+.richToolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+}
+
+.richToolbar button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  min-height: 26px;
+  padding: 3px 7px;
+}
+
+.richToolbar button:hover {
+  background: var(--badge-bg);
+  color: var(--text);
+}
+
+.richToolbar button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--ink-btn-fg);
+}
+
+.richEditorSurface {
+  color: var(--body-text);
+  line-height: 1.55;
+  min-height: 76px;
+  outline: none;
+  padding: 8px 10px 10px;
+}
+
+.richEditorSurface:empty::before {
+  color: var(--subtle);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.richEditorSurface p {
+  margin: 0 0 8px;
+}
+
+.richEditorSurface p:last-child {
+  margin-bottom: 0;
+}
+
+.richEditorSurface ul,
+.richEditorSurface ol {
+  margin: 2px 0 8px;
+  padding-inline-start: 26px;
+}
+
+.richEditorSurface li {
+  margin: 3px 0;
+  padding-inline-start: 2px;
 }
 
 /* Inline-editor pattern: negative margins cancel the padding so the text
