@@ -24,7 +24,13 @@ const SCOPED_AUTOMATION_KEY = 'agentBoard.scopedAutomationEnabled';
 const execFileAsync = promisify(execFile);
 
 type AgentKind = 'build' | 'qa';
-const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind; agent: CliAgent }>();
+const agentTerminals = new Map<string, {
+  terminal: vscode.Terminal;
+  kind: AgentKind;
+  agent: CliAgent;
+  execution?: unknown;
+  reclaimed?: boolean;
+}>();
 const TERMINAL_NAME_PATTERN = /^(?:Trellis|Agent Board): (\S+) (build|qa) \((Claude Code|Codex)\)$/;
 const diagnostics = vscode.window.createOutputChannel('Trellis Diagnostics');
 const autoQaStarting = new Set<string>();
@@ -139,7 +145,8 @@ export function activate(context: vscode.ExtensionContext): void {
       agentTerminals.set(match[1], {
         terminal,
         kind: match[2] as AgentKind,
-        agent: match[3] === 'Claude Code' ? 'claude' : 'codex'
+        agent: match[3] === 'Claude Code' ? 'claude' : 'codex',
+        reclaimed: true
       });
     }
   }
@@ -159,16 +166,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // This API is feature-detected so Trellis still runs on older supported VS Code builds.
   const terminalWindow = vscode.window as typeof vscode.window & {
     onDidEndTerminalShellExecution?: (
-      listener: (event: { terminal: vscode.Terminal; exitCode: number | undefined }) => unknown
+      listener: (event: { terminal: vscode.Terminal; execution: unknown; exitCode: number | undefined }) => unknown
     ) => vscode.Disposable;
   };
   if (terminalWindow.onDidEndTerminalShellExecution) {
     context.subscriptions.push(terminalWindow.onDidEndTerminalShellExecution((event) => {
-      const match = [...agentTerminals].find(([, entry]) => entry.terminal === event.terminal);
+      const match = [...agentTerminals].find(([, entry]) =>
+        entry.terminal === event.terminal
+        && (entry.execution === event.execution || (entry.reclaimed && entry.execution === undefined))
+      );
       if (!match) return;
-      const [taskId] = match;
+      const [taskId, entry] = match;
       agentTerminals.delete(taskId);
       diagnostics.appendLine(`[${new Date().toISOString()}] ${taskId} command ended (exit ${event.exitCode ?? 'unknown'}).`);
+      void handleAgentTerminalClosed(taskId, entry.kind);
       scheduleRefresh();
     }));
   }
@@ -547,7 +558,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
             const match = TERMINAL_NAME_PATTERN.exec(found.name);
             const kind = (match?.[2] ?? 'build') as AgentKind;
             const agent: CliAgent = match?.[3] === 'Claude Code' ? 'claude' : 'codex';
-            entry = { terminal: found, kind, agent };
+            entry = { terminal: found, kind, agent, reclaimed: true };
             agentTerminals.set(message.id, entry);
           }
         }
@@ -839,7 +850,51 @@ async function launchAgentTerminal(
   agentTerminals.set(taskId, { terminal, kind, agent });
   diagnostics.appendLine(`[${new Date().toISOString()}] Started ${taskId}: ${kind}, ${agent}.`);
   terminal.show(false);
-  terminal.sendText(agentLaunchCommand(agent, promptUri.fsPath));
+  await executeAgentCommand(terminal, taskId, agentLaunchCommand(agent, promptUri.fsPath));
+}
+
+async function executeAgentCommand(terminal: vscode.Terminal, taskId: string, command: string): Promise<void> {
+  type ShellExecution = { executeCommand(commandLine: string): unknown };
+  type TerminalWithIntegration = { shellIntegration?: ShellExecution };
+  type WindowWithIntegration = typeof vscode.window & {
+    onDidChangeTerminalShellIntegration?: (
+      listener: (event: { terminal: vscode.Terminal; shellIntegration: ShellExecution }) => unknown
+    ) => vscode.Disposable;
+  };
+  const integratedTerminal = terminal as unknown as TerminalWithIntegration;
+  const integratedWindow = vscode.window as WindowWithIntegration;
+
+  let integration = integratedTerminal.shellIntegration;
+  if (!integration && integratedWindow.onDidChangeTerminalShellIntegration) {
+    integration = await new Promise<ShellExecution | undefined>((resolve) => {
+      let settled = false;
+      let subscription: vscode.Disposable | undefined;
+      let timeout: NodeJS.Timeout | undefined;
+      const finish = (value?: ShellExecution) => {
+        if (settled) return;
+        settled = true;
+        subscription?.dispose();
+        if (timeout) clearTimeout(timeout);
+        resolve(value);
+      };
+      subscription = integratedWindow.onDidChangeTerminalShellIntegration!((event) => {
+        if (event.terminal === terminal) finish(event.shellIntegration);
+      });
+      timeout = setTimeout(() => finish(), 1500);
+    });
+  }
+
+  if (integration) {
+    const execution = integration.executeCommand(command);
+    const entry = agentTerminals.get(taskId);
+    if (entry?.terminal === terminal) entry.execution = execution;
+    return;
+  }
+
+  // Without shell integration VS Code cannot report command completion. This is
+  // a dedicated Trellis terminal, so close its shell when the agent exits; the
+  // existing onDidCloseTerminal handler then clears state and handles failures.
+  terminal.sendText(`${command}; exit`);
 }
 
 function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptPath: string): string {
