@@ -9,7 +9,7 @@ import { deriveTaskTitle } from './prdPrompt';
 import { inferredArchitectureNotes, inferredContextNotes, parseReadme, shouldReplaceArchitecture, shouldReplaceNotes, shouldReplaceValidation } from './inferenceSummary';
 import { selectMergedTasksToArchive } from './archive';
 import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifecycle';
-import { assertTaskId, assertTaskLockKey } from './taskIds';
+import { assertTaskId, assertTaskLockKey, isTaskId } from './taskIds';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
 import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
@@ -883,7 +883,11 @@ export class AgentBoardStorage {
   private async loadTasks(): Promise<AgentBoardTask[]> {
     const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(this.boardDir, 'tasks'));
     const tasks = await Promise.all(entries
-      .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.json'))
+      .filter(([name, type]) =>
+        type === vscode.FileType.File
+        && name.endsWith('.json')
+        && isTaskId(name.slice(0, -'.json'.length))
+      )
       .map(async ([name]) => {
         const fileId = name.slice(0, -'.json'.length);
         assertTaskId(fileId);
