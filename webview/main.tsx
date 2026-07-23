@@ -1304,20 +1304,10 @@ function App(): JSX.Element {
                 title={draft.assignedAgent === 'unassigned' ? 'Assign Claude or Codex first.' : undefined}
               />
             )}
-            {draft.status === 'building' && (
-              <p className="automationHint">
-                {(draft.qaNotes ?? []).length
-                  ? 'The build agent is repairing the latest QA feedback. QA will run again automatically.'
-                  : 'Builds run one at a time. QA starts automatically after this agent validates and completes the task; isolated QA work may run concurrently.'}
-              </p>
-            )}
             {draft.status === 'ready-for-qa' && (
               <Action label="QA is starting automatically…" onClick={() => undefined} disabled />
             )}
             {draft.status === 'failed-qa' && <p className="automationHint">Add context below while this task waits to return to Building.</p>}
-            {draft.status === 'qa-running' && (
-              <p className="automationHint">QA is running and will record pass or fail automatically.</p>
-            )}
             {state?.activeRuns?.[draft.id] && (() => {
               const run = state.activeRuns[draft.id];
               const isTerminal = run.surface === 'terminal';
