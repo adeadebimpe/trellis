@@ -11,7 +11,7 @@ import { generatedSpecDraftPatch, prdSplitDraftPatch } from './taskDrafts';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
-import { canRetryMissingBuildTerminal, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
+import { canRetryMissingBuildTerminal, canReuseBuildTerminalForQa, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -182,9 +182,8 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       if (!match) return;
       const [taskId, entry] = match;
-      agentTerminals.delete(taskId);
       diagnostics.appendLine(`[${new Date().toISOString()}] ${taskId} command ended (exit ${event.exitCode ?? 'unknown'}).`);
-      void handleAgentTerminalEnded(taskId, entry.kind, event.exitCode);
+      void handleAgentTerminalEnded(taskId, entry.kind, event.exitCode, entry.terminal);
     }));
   }
 
@@ -197,7 +196,12 @@ async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promi
   await handleAgentTerminalEnded(taskId, kind, undefined);
 }
 
-async function handleAgentTerminalEnded(taskId: string, kind: AgentKind, exitCode: number | undefined): Promise<void> {
+async function handleAgentTerminalEnded(
+  taskId: string,
+  kind: AgentKind,
+  exitCode: number | undefined,
+  reusableTerminal?: vscode.Terminal
+): Promise<void> {
   try {
     const storage = await resolveStorage();
     const state = await storage.loadBoardState();
@@ -207,10 +211,17 @@ async function handleAgentTerminalEnded(taskId: string, kind: AgentKind, exitCod
     }
     if (kind === 'build' && exitCode === 0 && task.status === 'ready-for-qa') {
       await markTerminalOwnershipComplete(taskId, task.claimId, 'build');
-      scheduleRefresh();
+      try {
+        await runStartQaAction(taskId, reusableTerminal);
+      } catch (error) {
+        agentTerminals.delete(taskId);
+        scheduleRefresh();
+        vscode.window.showErrorMessage(`Automatic QA could not reuse the Build terminal for ${taskId}. ${error instanceof Error ? error.message : String(error)}`);
+      }
       return;
     }
     if (kind === 'qa' && exitCode === 0 && task.status === 'failed-qa') {
+      agentTerminals.delete(taskId);
       await markTerminalOwnershipComplete(taskId, task.qaClaimId, 'qa');
       scheduleRefresh();
       return;
@@ -218,6 +229,7 @@ async function handleAgentTerminalEnded(taskId: string, kind: AgentKind, exitCod
     const interrupted = (kind === 'build' && (task.status === 'building' || task.status === 'ready-for-qa'))
       || (kind === 'qa' && task.status === 'qa-running');
     if (!interrupted) {
+      agentTerminals.delete(taskId);
       await clearTerminalOwnership(taskId);
       scheduleRefresh();
       return;
@@ -234,6 +246,7 @@ async function handleAgentTerminalEnded(taskId: string, kind: AgentKind, exitCod
         ]
       }
     });
+    agentTerminals.delete(taskId);
     await clearTerminalOwnership(taskId);
     vscode.window.showWarningMessage(`Agent terminal for ${taskId} ${exitDescription} while it was ${task.status}. The task was moved to Human Review.`);
     await postState();
@@ -773,7 +786,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   if (claimed.claimWarning) {
     vscode.window.showWarningMessage(claimed.claimWarning);
   }
-  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
+  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName);
   await setTerminalOwnership(id, claimed.claimId, 'build');
   try {
     await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
@@ -812,12 +825,16 @@ async function runRetryBuildAction(id: string): Promise<void> {
   await runStartBuildAction(id);
 }
 
-async function runStartQaAction(id: string): Promise<void> {
+async function runStartQaAction(id: string, buildTerminal?: vscode.Terminal): Promise<void> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = findTask(state.tasks, id);
   const agent = requireAgent(task.qaAgent, 'Assign a Codex or Claude QA agent before starting QA.');
-  assertTerminalCanStart(id, 'qa');
+  const registered = [...agentTerminals].map(([taskId, entry]) => ({ taskId, kind: entry.kind }));
+  const reuseTerminal = buildTerminal && canReuseBuildTerminalForQa(id, registered)
+    ? buildTerminal
+    : undefined;
+  if (!reuseTerminal) assertTerminalCanStart(id, 'qa');
 
   if (task.status !== 'ready-for-qa' && task.status !== 'failed-qa') {
     throw new Error('Move the task to Ready for QA before starting QA.');
@@ -829,7 +846,7 @@ async function runStartQaAction(id: string): Promise<void> {
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
   await setTerminalOwnership(id, started.qaClaimId, 'qa');
   try {
-    await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
+    await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName, reuseTerminal);
   } catch (error) {
     await clearTerminalOwnership(id);
     throw error;
@@ -977,19 +994,22 @@ async function launchAgentTerminal(
   agent: Exclude<AssignedAgent, 'unassigned'>,
   prompt: string,
   worktreePath: string,
-  branchName: string
+  branchName: string,
+  reusableTerminal?: vscode.Terminal
 ): Promise<void> {
   const promptUri = vscode.Uri.joinPath(storage.boardDir, 'prompts', `${taskId}-${kind}.md`);
   await vscode.workspace.fs.writeFile(promptUri, new TextEncoder().encode(prompt));
 
-  assertTerminalCanStart(taskId, kind);
+  if (!reusableTerminal) assertTerminalCanStart(taskId, kind);
 
-  const terminal = vscode.window.createTerminal({
-    name: `Trellis: ${taskId} ${kind} (${agentLabel(agent)})`,
-    cwd: await resolveTerminalCwd(storage, worktreePath, branchName)
-  });
+  const terminal = reusableTerminal ?? vscode.window.createTerminal({
+      name: `Trellis: ${taskId} ${kind} (${agentLabel(agent)})`,
+      cwd: await resolveTerminalCwd(storage, worktreePath, branchName)
+    });
   agentTerminals.set(taskId, { terminal, kind, agent });
-  diagnostics.appendLine(`[${new Date().toISOString()}] Started ${taskId}: ${kind}, ${agent}.`);
+  diagnostics.appendLine(
+    `[${new Date().toISOString()}] ${reusableTerminal ? 'Reused terminal for' : 'Started'} ${taskId}: ${kind}, ${agent}.`
+  );
   terminal.show(false);
   await executeAgentCommand(terminal, taskId, agentLaunchCommand(
     agent,
@@ -1065,7 +1085,7 @@ function agentLaunchCommand(
   );
 }
 
-function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
+function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
   const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
   const scripts = `${mainRoot}/.trellis/scripts`;
   return [
@@ -1077,7 +1097,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
     `Read ${mainRoot}/.trellis/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
+    'Stop after the task reaches Ready for QA. Trellis will launch fresh QA and continue the eligible task queue.',
     'If blocked, update the task with a blocker note and move it to human-review.'
   ].join('\n');
 }
@@ -1099,7 +1119,7 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
   ].join('\n');
 }
 
-function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
+function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
   const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
   const scripts = `${mainRoot}/.trellis/scripts`;
   return [
@@ -1111,7 +1131,7 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
     `Also read ${mainRoot}/.trellis/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
     `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal and continue any returned task until it prints {"noTask":true}.`,
+    'Stop after the task returns to Ready for QA. Trellis will launch fresh QA and continue the eligible task queue.',
     'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
   ].join('\n');
 }
@@ -1269,7 +1289,7 @@ async function startFailedQaRepairs(): Promise<void> {
     });
     await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/claim-task.mjs', task.id, agent, 'terminal']);
     const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
-    const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
+    const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName);
     await setTerminalOwnership(task.id, repairing.claimId, 'build');
     try {
       await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
