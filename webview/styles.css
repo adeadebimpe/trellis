@@ -1299,6 +1299,10 @@ body.vscode-light .card:hover {
   color: var(--status-color);
 }
 
+.workflowProgressLive i {
+  animation: chatSpin 1.4s linear infinite;
+}
+
 .cardClaim {
   align-items: center;
   color: var(--subtle);
@@ -1577,7 +1581,8 @@ body[data-host='panel'] .detailPage.projectPage {
 
 @media (prefers-reduced-motion: reduce) {
   .drawerScrim,
-  body[data-host='panel'] .detailPage.projectPage {
+  body[data-host='panel'] .detailPage.projectPage,
+  .workflowProgressLive i {
     animation: none;
   }
 }
