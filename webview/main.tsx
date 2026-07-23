@@ -1298,72 +1298,53 @@ function App(): JSX.Element {
                 </select>
               </span>
             </label>
+            <div className="propRow">
+              <span>Specialists</span>
+              <details className="specialistProperty">
+                <summary className="propDisplay">
+                  <span>
+                    {(() => {
+                      const specialists = state?.project.specialists ?? [];
+                      const selected = specialists.filter((specialist) => (draft.specialistIds ?? []).includes(specialist.id));
+                      if (!selected.length) return 'None';
+                      if (selected.length === 1) return selected[0].name;
+                      return `${selected.length} selected`;
+                    })()}
+                  </span>
+                  <span className="propChevron"><ChevronDownIcon /></span>
+                </summary>
+                <div className="specialistMenu">
+                  {(state?.project.specialists ?? []).length ? (
+                    (state?.project.specialists ?? []).map((specialist) => (
+                      <label className="specialistChoice" key={specialist.id}>
+                        <input
+                          type="checkbox"
+                          checked={(draft.specialistIds ?? []).includes(specialist.id)}
+                          onChange={(event) => {
+                            const selected = draft.specialistIds ?? [];
+                            const specialistIds = event.target.checked
+                              ? [...selected, specialist.id]
+                              : selected.filter((id) => id !== specialist.id);
+                            saveDraftNow({ ...draft, specialistIds });
+                          }}
+                        />
+                        <span>
+                          <strong>{specialist.name}</strong>
+                          <small>{specialist.stages.map(stageLabel).join(' · ')}</small>
+                        </span>
+                      </label>
+                    ))
+                  ) : <span className="specialistEmpty">None configured</span>}
+                  {(draft.specialistIds ?? []).filter((id) => !(state?.project.specialists ?? []).some((specialist) => specialist.id === id)).map((id) => (
+                    <div className="missingSpecialist" role="status" key={id}>
+                      Missing specialist ({id})
+                      <button className="ghost" onClick={() => saveDraftNow({ ...draft, specialistIds: (draft.specialistIds ?? []).filter((item) => item !== id) })}>Remove reference</button>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
           </div>
-
-          <section className="specialistPicker" aria-labelledby="task-specialists-title">
-            <h3 id="task-specialists-title">Specialists <span className="optionalLabel">Optional</span></h3>
-            {(state?.project.specialists ?? []).length ? (
-              <div className="specialistChoices">
-                {(state?.project.specialists ?? []).map((specialist) => (
-                  <label className="specialistChoice" key={specialist.id}>
-                    <input
-                      type="checkbox"
-                      checked={(draft.specialistIds ?? []).includes(specialist.id)}
-                      onChange={(event) => {
-                        const selected = draft.specialistIds ?? [];
-                        const specialistIds = event.target.checked
-                          ? [...selected, specialist.id]
-                          : selected.filter((id) => id !== specialist.id);
-                        saveDraftNow({ ...draft, specialistIds });
-                      }}
-                    />
-                    <span><strong>{specialist.name}</strong><small>{specialist.stages.map(stageLabel).join(' · ')}</small></span>
-                  </label>
-                ))}
-              </div>
-            ) : <p className="fieldHint">No specialists attached. The normal Build and QA workflow will run unchanged.</p>}
-            {(draft.specialistIds ?? []).filter((id) => !(state?.project.specialists ?? []).some((specialist) => specialist.id === id)).map((id) => (
-              <div className="missingSpecialist" role="status" key={id}>
-                Missing specialist ({id})
-                <button className="ghost" onClick={() => saveDraftNow({ ...draft, specialistIds: (draft.specialistIds ?? []).filter((item) => item !== id) })}>Remove reference</button>
-              </div>
-            ))}
-          </section>
-
-          {(() => {
-            const customBranchName = draft.customBranchName ?? '';
-            const branchError = branchNameValidationError(customBranchName);
-            const branchLocked = draft.status !== 'backlog'
-              || Boolean(draft.branchName || draft.worktreePath || draft.claimedAt || state?.activeRuns?.[draft.id]);
-            const preview = generatedTaskBranchName(draft.id, draft.title);
-            return (
-              <section className="branchField">
-                <label htmlFor={`branch-name-${draft.id}`}>Branch name</label>
-                <input
-                  id={`branch-name-${draft.id}`}
-                  className={`textInput${branchError ? ' inputInvalid' : ''}`}
-                  value={customBranchName}
-                  placeholder={preview}
-                  readOnly={branchLocked}
-                  aria-invalid={Boolean(branchError)}
-                  aria-describedby={`branch-help-${draft.id}`}
-                  onChange={(event) => {
-                    const next = { ...draft, customBranchName: event.target.value };
-                    setDraft(next);
-                    if (!branchNameValidationError(event.target.value)) updateDraft(next);
-                  }}
-                />
-                <p id={`branch-help-${draft.id}`} className={branchError ? 'fieldError' : 'fieldHelp'} role={branchError ? 'alert' : undefined}>
-                  {branchError
-                    || (branchLocked
-                      ? `Locked after work began${draft.branchName ? ` · ${draft.branchName}` : ''}.`
-                      : customBranchName
-                        ? 'Trellis will create this exact branch when the task is claimed.'
-                        : `Generated default: ${preview}`)}
-                </p>
-              </section>
-            );
-          })()}
 
           {!transientDraftRef.current && <div className="actions">
             {draft.status === 'backlog' && (
@@ -1461,6 +1442,40 @@ function App(): JSX.Element {
           </button>
           {detailsOpen && (
             <div className="detailSections">
+              {(() => {
+                const customBranchName = draft.customBranchName ?? '';
+                const branchError = branchNameValidationError(customBranchName);
+                const branchLocked = draft.status !== 'backlog'
+                  || Boolean(draft.branchName || draft.worktreePath || draft.claimedAt || state?.activeRuns?.[draft.id]);
+                const preview = generatedTaskBranchName(draft.id, draft.title);
+                return (
+                  <section className="branchField">
+                    <label htmlFor={`branch-name-${draft.id}`}>Branch name</label>
+                    <input
+                      id={`branch-name-${draft.id}`}
+                      className={`textInput${branchError ? ' inputInvalid' : ''}`}
+                      value={customBranchName}
+                      placeholder={preview}
+                      readOnly={branchLocked}
+                      aria-invalid={Boolean(branchError)}
+                      aria-describedby={`branch-help-${draft.id}`}
+                      onChange={(event) => {
+                        const next = { ...draft, customBranchName: event.target.value };
+                        setDraft(next);
+                        if (!branchNameValidationError(event.target.value)) updateDraft(next);
+                      }}
+                    />
+                    <p id={`branch-help-${draft.id}`} className={branchError ? 'fieldError' : 'fieldHelp'} role={branchError ? 'alert' : undefined}>
+                      {branchError
+                        || (branchLocked
+                          ? `Locked after work began${draft.branchName ? ` · ${draft.branchName}` : ''}.`
+                          : customBranchName
+                            ? 'Trellis will create this exact branch when the task is claimed.'
+                            : `Generated default: ${preview}`)}
+                    </p>
+                  </section>
+                );
+              })()}
               {(draft.lastValidation || draft.shipResult) && (
                 <div className="statusPanel">
                   {draft.lastValidation && (() => {
@@ -1496,7 +1511,6 @@ function App(): JSX.Element {
                   <DetailList label="Constraints" items={draft.constraints} />
                   <DetailText label="Agent Notes" text={draft.agentNotes} />
                   <DetailList label="QA Evidence" items={draft.qaEvidence} />
-                  <DetailText label="Branch" text={draft.branchName} />
                 </>
               ) : (
                 !draft.lastValidation && !draft.shipResult && (
