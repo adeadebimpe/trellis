@@ -2483,12 +2483,13 @@ body[data-host='sidebar'] .expandButton {
 
 /* Live agent terminal banner on the task detail page. */
 .terminalBanner {
-  align-items: center;
+  align-items: start;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--body-text);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   font-size: 12px;
   gap: 8px;
   padding: 8px 8px 8px 10px;
@@ -2512,7 +2513,8 @@ body[data-host='sidebar'] .expandButton {
 }
 
 .terminalBanner .ghost {
-  flex-shrink: 0;
+  grid-column: 2;
+  justify-self: start;
   white-space: nowrap;
 }
 
