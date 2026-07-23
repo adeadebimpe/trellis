@@ -26,9 +26,13 @@ function posixQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function posixArg(value: string): string {
+  return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : posixQuote(value);
+}
+
 export function codexLaunchCommand(promptPath: string, scopedAutomation: boolean, scope?: ClaudeAutomationScope): string {
   const globalArgs = codexAutomationArgs(scopedAutomation, scope);
-  return `codex${globalArgs.length ? ` ${globalArgs.join(' ')}` : ''} exec --skip-git-repo-check "$(cat ${posixQuote(promptPath)})"`;
+  return `codex${globalArgs.length ? ` ${globalArgs.map(posixArg).join(' ')}` : ''} exec --skip-git-repo-check "$(cat ${posixQuote(promptPath)})"`;
 }
 
 const UNSAFE_COMMAND = /(^|(?:&&|\|\||;|\|)\s*)(?:sudo\s+)?(?:rm\b|git\s+(?:push\b|reset\s+--hard\b|clean\b)|(?:npm|pnpm|yarn)\s+publish\b)/i;
