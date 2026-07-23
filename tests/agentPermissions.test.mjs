@@ -35,6 +35,15 @@ assert.ok(scopedCommand.indexOf('--ask-for-approval never') < scopedCommand.inde
 assert.ok(scopedCommand.includes('exec --skip-git-repo-check'));
 assert.ok(scopedCommand.includes("'\\''"), 'prompt path must be POSIX quoted');
 assert.equal(codexLaunchCommand('/tmp/prompt.md', false).includes('--ask-for-approval'), false);
+const spacedCodexCommand = codexLaunchCommand('/tmp/agent board/prompt.md', true, {
+  mainRoot: '/Users/example/agent board',
+  worktreePath: '/Users/example/agent board/.trellis/worktrees/TASK-062',
+  taskId: 'TASK-062'
+});
+assert.ok(spacedCodexCommand.includes("--add-dir '/Users/example/agent board/.git'"));
+assert.ok(spacedCodexCommand.includes("--add-dir '/Users/example/agent board/.trellis/tasks'"));
+assert.ok(spacedCodexCommand.includes("--add-dir '/Users/example/agent board/.trellis/locks'"));
+assert.equal(spacedCodexCommand.includes('--add-dir /Users/example/agent board/'), false, 'paths containing spaces must not be emitted unquoted');
 
 const scope = {
   worktreePath: '/tmp/a worktree',
