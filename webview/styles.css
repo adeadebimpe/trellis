@@ -2065,41 +2065,134 @@ input.textInput {
   margin: 0 0 18px;
 }
 
-.contextActions {
-  align-items: center;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: max-content 1fr;
-  margin: 0 0 12px;
-}
-
-.contextIntro {
+.contextHeader {
   align-items: flex-start;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0;
+  gap: 20px;
+  justify-content: space-between;
 }
 
-.contextIntro p {
-  color: var(--body-text);
-  line-height: 1.5;
+.contextHeader h1 {
+  color: var(--text);
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   margin: 0;
 }
 
+.contextHeader p {
+  color: var(--body-text);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 5px 0 0;
+  max-width: 380px;
+}
+
+.contextScanButton {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.contextScanButton svg {
+  height: 14px;
+  width: 14px;
+}
+
 .contextFields {
-  margin: 16px 0 18px;
+  margin: 26px 0 22px;
 }
 
 .contextFields label {
   width: 100%;
 }
 
-.contextFields .fieldHint {
-  margin-top: 4px;
+.repoSummary {
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+}
+
+.repoSummaryHeading {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.repoSummaryHeading h2 {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.repoSummaryHeading span {
+  color: var(--subtle);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.repoSummaryName {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 0;
+}
+
+.repoSummaryDescription {
+  color: var(--body-text);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 3px 0 0;
+}
+
+.repoSummaryFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.repoSummaryFacts span {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 4px 7px;
+}
+
+.contextSaveStatus {
+  align-self: flex-end;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 12px 0 0;
+}
+
+@media (max-width: 420px) {
+  .contextHeader {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .contextScanButton {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .repoSummaryHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
 }
 
 .workflowPromptSection {

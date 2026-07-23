@@ -1560,7 +1560,6 @@ function App(): JSX.Element {
               >
                 {hostMode === 'panel' ? <XIcon /> : <ArrowLeftIcon />}
               </button>
-              <span className="navTitle">Project Context</span>
             </div>
             {projectOnboarding && (
               <div className="detailNavRight">
@@ -1570,9 +1569,13 @@ function App(): JSX.Element {
           </div>
 
           <div className="detailBody">
-          <div className="contextActions">
+          <header className="contextHeader">
+            <div>
+              <h1>Project Context</h1>
+              <p>Keep the repository guidance agents need to build and verify work.</p>
+            </div>
             <button
-              className="primary"
+              className="ghost contextScanButton"
               disabled={inferBusy}
               onClick={() => {
                 if (projectSaveTimer.current !== undefined) {
@@ -1588,141 +1591,45 @@ function App(): JSX.Element {
                 vscode.postMessage({ type: 'infer-project', project: pendingDraft });
               }}
             >
-              {inferBusy ? 'Scanning repo…' : 'Infer from repo'}
+              <SparklesIcon />
+              {inferBusy ? 'Scanning…' : 'Scan repository'}
             </button>
-            <p className={`autosaveStatus ${projectSaveState}`} role="status" aria-live="polite">
-              {projectSaveState === 'saving' && 'Saving changes…'}
-              {projectSaveState === 'saved' && 'Saved automatically'}
-              {projectSaveState === 'error' && 'Could not save — your edits are still here'}
-              {projectSaveState === 'idle' && `Autosaved · ${new Date(projectDraft.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-            </p>
-          </div>
-
-          <div className="contextBlock">
-            <WorkflowModePicker
-              value={projectDraft.workflowMode ?? 'branch-per-task'}
-              onChange={(workflowMode) => updateProject({ ...projectDraft, workflowMode })}
-            />
-            <p className="fieldHint">Changes apply to new task claims. Existing tasks stay where they started.</p>
-          </div>
-
-          <div className="contextIntro">
-            <p>Give every agent the same product and repository context. Start with a repo scan, add your own notes, or come back from the menu whenever you need it.</p>
-          </div>
+          </header>
 
           <div className="fields contextFields">
-            <div>
-              <Field
-                label="Project context"
-                placeholder="Product overview, architecture, conventions, constraints, links…"
-                value={projectDraft.contextNotes ?? ''}
-                onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
-              />
-              <p className="fieldHint">Shared with agents during PRD generation. Stored in .trellis/project.json.</p>
-            </div>
-
-            <div>
-              <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
-              <p className="fieldHint">Used by QA runs, one per line.</p>
-            </div>
+            <Field
+              label="Context notes"
+              placeholder="Product goals, architecture, conventions, and constraints…"
+              value={projectDraft.contextNotes ?? ''}
+              onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
+            />
+            <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
           </div>
 
-          <section className="specialistManager" aria-labelledby="specialists-title">
-            <div className="specialistManagerHeader">
-              <div>
-                <h3 id="specialists-title">Task specialists</h3>
-                <p>Create reusable advisory roles, then opt tasks into the stages where their perspective is useful.</p>
-              </div>
-              <button className="ghost" onClick={() => {
-                const specialist: Specialist = {
-                  id: `specialist-${Date.now().toString(36)}`,
-                  name: 'New specialist',
-                  description: '',
-                  instructions: '',
-                  accessMode: 'read-only',
-                  stages: ['before-build']
-                };
-                updateProject({ ...projectDraft, specialists: [...(projectDraft.specialists ?? []), specialist] });
-              }}>Add specialist</button>
-            </div>
-            {(projectDraft.specialists ?? []).length === 0 && <p className="fieldHint">Specialists are optional. Tasks without one use the normal workflow with no extra steps.</p>}
-            <div className="specialistCards">
-              {(projectDraft.specialists ?? []).map((specialist) => {
-                const replace = (patch: Partial<Specialist>) => updateProject({
-                  ...projectDraft,
-                  specialists: (projectDraft.specialists ?? []).map((item) => item.id === specialist.id ? { ...item, ...patch } : item)
-                });
-                return (
-                  <article className="specialistCard" key={specialist.id}>
-                    <div className="specialistCardTop">
-                      <input aria-label="Specialist name" value={specialist.name} onChange={(event) => replace({ name: event.target.value })} />
-                      <button className="dangerText" aria-label={`Remove ${specialist.name}`} onClick={() => updateProject({ ...projectDraft, specialists: (projectDraft.specialists ?? []).filter((item) => item.id !== specialist.id) })}>Remove</button>
-                    </div>
-                    <input aria-label={`${specialist.name} description`} placeholder="Short description" value={specialist.description} onChange={(event) => replace({ description: event.target.value })} />
-                    <textarea aria-label={`${specialist.name} detailed instructions`} placeholder="Detailed instructions, requirements, and review focus…" rows={5} value={specialist.instructions} onChange={(event) => replace({ instructions: event.target.value })} />
-                    <label>Access
-                      <select value={specialist.accessMode} onChange={(event) => replace({ accessMode: event.target.value as Specialist['accessMode'] })}>
-                        <option value="read-only">Read-only advisory</option>
-                        <option value="workspace-write">Workspace-write advisory</option>
-                      </select>
-                    </label>
-                    <fieldset><legend>Workflow stages</legend>
-                      {(['before-build', 'post-build-review', 'qa'] as SpecialistStage[]).map((stage) => (
-                        <label key={stage}><input type="checkbox" checked={specialist.stages.includes(stage)} onChange={(event) => replace({ stages: event.target.checked ? [...specialist.stages, stage] : specialist.stages.filter((item) => item !== stage) })} />{stageLabel(stage)}</label>
-                      ))}
-                    </fieldset>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="workflowPromptSection" aria-labelledby="workflow-prompts-title">
-            <div className="workflowPromptIntro">
-              <h3 id="workflow-prompts-title">Workflow agent prompts</h3>
-              <p>Customize the instructions sent when Trellis launches each workflow state. Changes save automatically and each prompt is independent.</p>
-              <p className="fieldHint">Placeholders: <code>{'{{taskId}}'}</code>, <code>{'{{repositoryPath}}'}</code>, <code>{'{{worktreePath}}'}</code>, <code>{'{{branchName}}'}</code>, <code>{'{{scriptsPath}}'}</code>, and <code>{'{{agent}}'}</code>. Trellis replaces them when the run starts.</p>
-            </div>
-            <div className="workflowPromptEditors">
-              <PromptTemplateField
-                label="Implementation"
-                description="Used when an agent starts building a ready task."
-                value={projectDraft.workflowPrompts?.implementation ?? ''}
-                onChange={(implementation) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, implementation } })}
-              />
-              <PromptTemplateField
-                label="QA"
-                description="Used when an agent reviews a completed implementation."
-                value={projectDraft.workflowPrompts?.qa ?? ''}
-                onChange={(qa) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, qa } })}
-              />
-              <PromptTemplateField
-                label="Failed-QA repair"
-                description="Used when implementation resumes to address failed QA."
-                value={projectDraft.workflowPrompts?.repair ?? ''}
-                onChange={(repair) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, repair } })}
-              />
-            </div>
-          </section>
-
           {projectDraft.inference?.lastInferred && (
-            <div className="detailSections repoScan">
-              <h4 className="repoScanTitle">Repo scan · {timeAgo(projectDraft.inference.lastInferred)}</h4>
-              {(projectDraft.inference.projectName || projectDraft.inference.projectDescription) && (
-                <DetailText
-                  label="Project"
-                  text={[projectDraft.inference.projectName, projectDraft.inference.projectDescription].filter(Boolean).join(' — ')}
-                />
-              )}
-              <DetailText label="README" text={projectDraft.inference.readmeSummary ?? ''} />
-              <DetailText label="Stack" text={projectDraft.inference.likelyStack.join(', ')} />
-              <DetailText label="Package manager" text={projectDraft.inference.packageManager} />
-              <DetailText label="Layout" text={(projectDraft.inference.topLevelDirs ?? []).map((dir) => `${dir}/`).join(', ')} />
-              <DetailText label="Key files" text={projectDraft.inference.detectedFiles.join(', ')} />
-              <DetailList label="Suggested validation" items={projectDraft.inference.suggestedValidation} />
-            </div>
+            <section className="repoSummary" aria-labelledby="repo-summary-title">
+              <div className="repoSummaryHeading">
+                <h2 id="repo-summary-title">Repository summary</h2>
+                <span>Scanned {timeAgo(projectDraft.inference.lastInferred)}</span>
+              </div>
+              <p className="repoSummaryName">
+                {projectDraft.inference.projectName || projectDraft.inference.readmeTitle || 'Repository detected'}
+              </p>
+              {projectDraft.inference.projectDescription && <p className="repoSummaryDescription">{projectDraft.inference.projectDescription}</p>}
+              <div className="repoSummaryFacts">
+                {projectDraft.inference.packageManager && <span>{projectDraft.inference.packageManager}</span>}
+                {projectDraft.inference.likelyStack.slice(0, 3).map((item) => <span key={item}>{item}</span>)}
+                {projectDraft.inference.detectedFiles.length > 0 && <span>{projectDraft.inference.detectedFiles.length} key files</span>}
+              </div>
+            </section>
           )}
 
+          <p className={`autosaveStatus contextSaveStatus ${projectSaveState}`} role="status" aria-live="polite">
+            {projectSaveState === 'saving' && 'Saving changes…'}
+            {projectSaveState === 'saved' && 'Saved automatically'}
+            {projectSaveState === 'error' && 'Could not save — your edits are still here'}
+            {projectSaveState === 'idle' && `Autosaved · ${new Date(projectDraft.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+          </p>
           </div>
           </section>
         </>
