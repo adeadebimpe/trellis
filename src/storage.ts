@@ -171,6 +171,9 @@ export class AgentBoardStorage {
       const archived = new Set(archivedIds);
       tasks = tasks.filter((task) => !archived.has(task.id));
     }
+    // Human Review was removed from the active workflow. Preserve legacy files
+    // unchanged, but surface them as completed work in the board and detail UI.
+    tasks = tasks.map((task) => task.status === 'human-review' ? { ...task, status: 'done' } : task);
     const project = await this.loadProjectContext();
     const board: AgentBoardFile = {
       version: 1,
@@ -206,6 +209,14 @@ export class AgentBoardStorage {
       }
       if (initial?.qaAgent) {
         task.qaAgent = this.normalizeAgent(initial.qaAgent);
+      }
+      if (typeof initial?.title === 'string') task.title = initial.title.trim();
+      if (typeof initial?.description === 'string') task.description = initial.description.trim();
+      if (initial?.priority) task.priority = initial.priority;
+      for (const key of ['acceptanceCriteria', 'qaChecklist', 'designQaChecklist', 'validationCommands', 'relevantFiles', 'constraints'] as const) {
+        if (Array.isArray(initial?.[key])) {
+          task[key] = initial[key].map(String).map((value) => value.trim()).filter(Boolean);
+        }
       }
       await this.writeJson(vscode.Uri.joinPath(this.boardDir, 'tasks', `${id}.json`), task);
       await this.appendRootActivity('vscode', `Created ${id}.`);
@@ -426,9 +437,9 @@ export class AgentBoardStorage {
         add('Started QA.');
         break;
       case 'pass-qa':
-        patch.status = 'human-review';
+        patch.status = 'done';
         patch.qaNotes = [...(existing.qaNotes ?? []), { timestamp: now, actor: existing.qaClaimedBy || existing.qaAgent || 'qa', message: 'QA passed from board.' }];
-        add('QA passed. Moved to human review.');
+        add('QA passed. Moved to done.');
         break;
       case 'mark-done':
         patch.status = 'done';

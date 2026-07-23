@@ -154,7 +154,8 @@ export interface PrdTaskSeed {
   priority: Priority;
 }
 
-// "From PRD" mode: split a pasted PRD into independent, implementation-ready tasks.
+// Bulk Generate mode: split prose requirements or bullet points into
+// independent, implementation-ready tasks.
 export async function generateTasksFromPrd(
   context: vscode.ExtensionContext,
   prdText: string,
@@ -185,7 +186,7 @@ export async function generateTasksFromPrd(
   } else {
     const settings = await getAiSettings(context);
     if (!settings) {
-      throw new Error('Configure an AI provider before generating tasks from a PRD.');
+      throw new Error('Configure an AI provider before bulk generating tasks.');
     }
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -203,7 +204,7 @@ export async function generateTasksFromPrd(
 
 function buildPrdSplitPrompt(prdText: string): string {
   return [
-    'You are a planning agent. Split the PRD below into independent, implementation-ready coding tasks.',
+    'You are a planning agent. Split the requirements below into independent, implementation-ready coding tasks.',
     'Return a strict JSON array only. No markdown, commentary, or code fences.',
     '',
     'Rules:',
@@ -212,14 +213,14 @@ function buildPrdSplitPrompt(prdText: string): string {
     '- Order the array so earlier tasks unblock later ones.',
     '- title: short specific name, max 60 characters, no trailing punctuation.',
     '- brief: one or two sentences describing what to build, self-contained.',
-    '- description: the implementation-ready details drawn from the PRD for this task only.',
+    '- description: retain the supplied requirements relevant to this task and add the implementation detail needed to execute it.',
     '- acceptanceCriteria: concrete, testable statements.',
     '- priority: "high", "medium", or "low" based on how foundational the task is.',
     '',
     'Return this exact JSON shape:',
     '[{"title":"string","brief":"string","description":"string","acceptanceCriteria":["string"],"priority":"medium"}]',
     '',
-    'PRD:',
+    'Requirements (prose PRD or bullet points):',
     prdText.slice(0, 24000)
   ].join('\n');
 }

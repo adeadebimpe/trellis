@@ -5,7 +5,6 @@ export const columns = [
   { id: 'ready-for-qa', title: 'Ready for QA' },
   { id: 'qa-running', title: 'QA Running' },
   { id: 'failed-qa', title: 'Failed QA' },
-  { id: 'human-review', title: 'Human Review' },
   { id: 'done', title: 'Done' },
   { id: 'merged', title: 'Merged' }
 ] as const;
@@ -803,12 +802,12 @@ await runScript(async () => {
     }
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
-    current.status = 'human-review';
+    current.status = 'done';
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.qaNotes.push({ timestamp: now, actor, message: note });
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
-    current.activityLog.push({ timestamp: now, actor, message: 'QA passed. Moved task to human-review.' });
+    current.activityLog.push({ timestamp: now, actor, message: 'QA passed. Moved task to done.' });
     await writeJson(path, current);
     return current;
   });

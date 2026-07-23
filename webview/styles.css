@@ -1157,20 +1157,6 @@ body.vscode-light .card:hover {
   color: var(--status-color);
 }
 
-.workflowProgressLive i::after {
-  display: none;
-}
-
-.workflowProgressLive svg {
-  animation: chatSpin 1.4s linear infinite;
-  color: var(--card);
-  display: block;
-  height: 10px;
-  position: relative;
-  width: 10px;
-  z-index: 1;
-}
-
 .cardClaim {
   align-items: center;
   color: var(--subtle);

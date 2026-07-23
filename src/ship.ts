@@ -31,8 +31,8 @@ function errorText(error: unknown): string {
 
 export async function shipTask(storage: AgentBoardStorage, task: AgentBoardTask, expectedLastUpdated?: string): Promise<string> {
   const mainRoot = storage.root.fsPath;
-  if (task.status !== 'human-review') {
-    throw new Error(`Move ${task.id} to Human Review before shipping.`);
+  if (task.status !== 'done' && task.status !== 'human-review') {
+    throw new Error(`Complete QA for ${task.id} before shipping.`);
   }
   if (task.workflowMode === 'direct-on-main') {
     const now = new Date().toISOString();

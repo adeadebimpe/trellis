@@ -285,6 +285,12 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         }
         break;
       }
+      case 'create-blank-draft': {
+        const task = await storage.createTask(message.task ?? {});
+        await postState();
+        webview.postMessage({ type: 'blank-draft-created', task });
+        break;
+      }
       case 'select-intake-files': {
         const picked = await vscode.window.showOpenDialog({
           canSelectFiles: true,
@@ -377,7 +383,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
       case 'create-from-prd': {
         const prd = String(message.prd ?? '').trim();
         if (!prd) {
-          throw new Error('Paste a PRD before generating tasks.');
+          throw new Error('Add a PRD or bullet-point requirements before bulk generating tasks.');
         }
         const agent = await resolveRequestedAgent(message.agent);
         const qaAgent = await resolveRequestedAgent(message.qaAgent);
@@ -385,7 +391,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         try {
           const seeds = await generateTasksFromPrd(context, prd, storage.root.fsPath);
           if (!seeds.length) {
-            throw new Error('The agent could not derive any tasks from that PRD.');
+            throw new Error('The agent could not derive any tasks from those requirements.');
           }
           const now = new Date().toISOString();
           for (const seed of seeds) {
@@ -401,7 +407,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
                 status: 'ready-for-agent',
                 activityLog: [
                   ...(task.activityLog ?? []),
-                  { timestamp: now, actor: 'vscode', message: 'Created from PRD split.' }
+                  { timestamp: now, actor: 'vscode', message: 'Created with Bulk Generate.' }
                 ]
               },
               expectedLastUpdated: task.lastUpdated
@@ -409,7 +415,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           }
           await postState();
           webview.postMessage({ type: 'prd-split-created', count: seeds.length });
-          vscode.window.showInformationMessage(`Trellis created ${seeds.length} task(s) from the PRD.`);
+          vscode.window.showInformationMessage(`Trellis bulk generated ${seeds.length} task(s).`);
         } finally {
           webview.postMessage({ type: 'prd-split-done' });
         }

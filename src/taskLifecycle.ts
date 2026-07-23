@@ -14,7 +14,7 @@ export function assertBoardActionAllowed(task: AgentBoardTask, action: string): 
     case 'fail-qa':
       throw new Error('Fail QA through the active QA workflow so Trellis can verify QA ownership.');
     case 'mark-done':
-      if (task.status !== 'human-review') throw new Error('Only a task in Human Review can be marked done.');
+      if (task.status !== 'human-review') throw new Error('Only a legacy Human Review task can be marked done.');
       return;
     default:
       return;

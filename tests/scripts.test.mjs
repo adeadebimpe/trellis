@@ -189,7 +189,7 @@ result = runScript(repo, 'run-validation.mjs', ['TASK-001']);
 assert.equal(result.status, 0, result.stderr);
 result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
 assert.equal(result.status, 0, result.stderr);
-assert.equal(readTask(repo, 'TASK-001').status, 'human-review');
+assert.equal(readTask(repo, 'TASK-001').status, 'done');
 
 // TASK-002: empty evidence, then failing validation.
 result = runScript(repo, 'start-qa.mjs', ['TASK-002', 'claude']);

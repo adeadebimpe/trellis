@@ -219,6 +219,8 @@ function App(): JSX.Element {
   const [acOpen, setAcOpen] = useState(true);
   const [detailTab, setDetailTab] = useState<'comments' | 'activity'>('comments');
   const dirtyRef = useRef(false);
+  const transientDraftRef = useRef(false);
+  const transientCreatingRef = useRef(false);
   const draftRef = useRef<Task | null>(null);
   const saveTimerRef = useRef<number | undefined>(undefined);
   const lastKnownUpdatedRef = useRef<string | undefined>(undefined);
@@ -336,6 +338,19 @@ function App(): JSX.Element {
         setSelectedId(null);
         setDraft(null);
       }
+      if (event.data.type === 'blank-draft-created') {
+        const created = event.data.task as Task;
+        const keepOpen = transientDraftRef.current;
+        transientDraftRef.current = false;
+        transientCreatingRef.current = false;
+        lastKnownUpdatedRef.current = created.lastUpdated;
+        if (keepOpen) {
+          setSelectedId(created.id);
+          setDraft(cloneTask(created));
+        }
+        setSaveState('saved');
+        window.setTimeout(() => setSaveState('idle'), 1400);
+      }
       if (event.data.type === 'fresh-started') {
         setSelectedId(null);
         setDraft(null);
@@ -416,7 +431,7 @@ function App(): JSX.Element {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = undefined;
     }
-    if (dirtyRef.current && draftRef.current) {
+    if (dirtyRef.current && draftRef.current && !transientDraftRef.current) {
       dirtyRef.current = false;
       vscode.postMessage({ type: 'save-task', task: draftRef.current, expectedLastUpdated: lastKnownUpdatedRef.current });
     }
@@ -440,6 +455,22 @@ function App(): JSX.Element {
 
   const updateDraft = (next: Task) => {
     setDraft(next);
+    if (transientDraftRef.current) {
+      if (saveTimerRef.current !== undefined) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = undefined;
+      }
+      if (isMeaningfulBlankDraft(next)) {
+        saveTimerRef.current = window.setTimeout(() => {
+          saveTimerRef.current = undefined;
+          if (!draftRef.current || transientCreatingRef.current) return;
+          transientCreatingRef.current = true;
+          setSaveState('saving');
+          vscode.postMessage({ type: 'create-blank-draft', task: draftRef.current });
+        }, 600);
+      }
+      return;
+    }
     dirtyRef.current = true;
     if (saveTimerRef.current !== undefined) {
       window.clearTimeout(saveTimerRef.current);
@@ -457,6 +488,14 @@ function App(): JSX.Element {
 
   const saveDraftNow = (next: Task) => {
     setDraft(next);
+    if (transientDraftRef.current) {
+      if (isMeaningfulBlankDraft(next) && !transientCreatingRef.current) {
+        transientCreatingRef.current = true;
+        setSaveState('saving');
+        vscode.postMessage({ type: 'create-blank-draft', task: next });
+      }
+      return;
+    }
     if (saveTimerRef.current !== undefined) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = undefined;
@@ -484,6 +523,34 @@ function App(): JSX.Element {
     setCreateQaAgent(state?.settings.autoAssignAgent ?? 'unassigned');
     setCreateOpen(true);
     vscode.postMessage({ type: 'workspace-files' });
+  };
+
+  const openBlankDraft = () => {
+    transientDraftRef.current = true;
+    transientCreatingRef.current = false;
+    dirtyRef.current = false;
+    lastKnownUpdatedRef.current = undefined;
+    setSelectedId(null);
+    setDraft(blankDraft());
+    setAddMenuOpen(false);
+  };
+
+  const closeDraft = () => {
+    if (transientDraftRef.current) {
+      if (saveTimerRef.current !== undefined) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = undefined;
+      }
+      if (draftRef.current && isMeaningfulBlankDraft(draftRef.current) && !transientCreatingRef.current) {
+        transientCreatingRef.current = true;
+        vscode.postMessage({ type: 'create-blank-draft', task: draftRef.current });
+      }
+      transientDraftRef.current = false;
+      setDraft(null);
+      setSaveState('idle');
+      return;
+    }
+    setSelectedId(null);
   };
 
   const sendCreate = () => {
@@ -656,7 +723,7 @@ function App(): JSX.Element {
           <h1>Trellis</h1>
         </div>
         {(generatingIds.length > 0 || prdSplitting) && (
-          <p className="topbarNote">{prdSplitting ? 'Splitting the PRD into tasks…' : 'Drafting PRD… You can close this — generation continues in the background.'}</p>
+          <p className="topbarNote">{prdSplitting ? 'Bulk generating tasks…' : 'Drafting PRD… You can close this — generation continues in the background.'}</p>
         )}
         <div className="telemetry">
           <div className="menuWrap">
@@ -672,8 +739,7 @@ function App(): JSX.Element {
                     openCreate();
                   }}>Create with agent</button>
                   <button role="menuitem" onClick={() => {
-                    setAddMenuOpen(false);
-                    vscode.postMessage({ type: 'create-task' });
+                    openBlankDraft();
                   }}>Blank task</button>
                 </div>
               </>
@@ -796,12 +862,12 @@ function App(): JSX.Element {
                       </span>
                       <span
                         className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
-                        title={`${workflowPercent[task.status]}% through the Trellis workflow`}
-                        aria-label={`${workflowPercent[task.status]} percent workflow progress`}
+                        title={workflowPercent[task.status] === 100 ? `${statusLabels[task.status]} task` : `${workflowPercent[task.status]}% through the Trellis workflow`}
+                        aria-label={workflowPercent[task.status] === 100 ? `${statusLabels[task.status]} task, workflow complete` : `${workflowPercent[task.status]} percent workflow progress`}
                         style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
                       >
-                        {workflowPercent[task.status] < 100 && <i aria-hidden="true"><LoaderPinwheelIcon /></i>}
-                        <span>{workflowPercent[task.status]}%</span>
+                        <i aria-hidden="true" />
+                        {workflowPercent[task.status] < 100 && <span>{workflowPercent[task.status]}%</span>}
                       </span>
                     </span>
                   </button>
@@ -836,12 +902,12 @@ function App(): JSX.Element {
             <div className="createHero">
               <span className="heroTile"><LayoutGridIcon /></span>
               <h2>What would you like to build?</h2>
-              <p>Create tasks, investigate bugs, or generate from a PRD — let your agents handle the rest.</p>
+              <p>Create tasks, investigate bugs, or bulk generate from a PRD or bullet points.</p>
             </div>
             <div className="modeCards">
               {([
                 { key: 'quick', icon: <SparklesIcon />, title: 'Quick Create', desc: 'Describe in a sentence, AI generates the full PRD and acceptance criteria.' },
-                { key: 'prd', icon: <FileTextIcon />, title: 'From PRD', desc: 'Paste a PRD to generate tasks and break them into actionable items automatically.' },
+                { key: 'prd', icon: <FileTextIcon />, title: 'Bulk Generate', desc: 'Paste a PRD or bullet-point requirements to create multiple actionable tasks.' },
                 { key: 'bug', icon: <BugIcon />, title: 'Bug Investigation', desc: 'Describe a bug for AI to investigate the codebase and propose a fix.' }
               ] as const).map((mode) => (
                 <button
@@ -861,7 +927,7 @@ function App(): JSX.Element {
             {createBusy && (
               <p className="chatStatus" role="status" aria-live="polite">
                 <LoaderPinwheelIcon />
-                {createBusy === 'prd' ? 'Splitting the PRD into tasks…' : 'Drafting the PRD…'} You can go back — this continues in the background.
+                {createBusy === 'prd' ? 'Bulk generating tasks…' : 'Drafting the PRD…'} You can go back — this continues in the background.
               </p>
             )}
             {mentionQuery !== null && mentionMatches.length > 0 && (
@@ -897,7 +963,7 @@ function App(): JSX.Element {
               autoFocus
               disabled={createBusy !== null}
               placeholder={createMode === 'prd'
-                ? 'Paste your PRD… (Cmd+Enter creates the tasks)'
+                ? 'Paste a PRD or bullet-point requirements… (Cmd+Enter creates tasks)'
                 : createMode === 'bug'
                   ? 'Describe the bug (@mention for context)'
                   : 'Describe your task (@mention for context)'}
@@ -969,8 +1035,8 @@ function App(): JSX.Element {
               </div>
               <button
                 className="chatSend"
-                aria-label={createMode === 'prd' ? 'Generate tasks from PRD' : 'Create task'}
-                title={createMode === 'prd' ? 'Generate tasks from PRD' : 'Create task'}
+                aria-label={createMode === 'prd' ? 'Bulk generate tasks' : 'Create task'}
+                title={createMode === 'prd' ? 'Bulk generate tasks' : 'Create task'}
                 disabled={!createText.trim() || createBusy !== null || prdSplitting}
                 onClick={sendCreate}
               >
@@ -985,17 +1051,17 @@ function App(): JSX.Element {
         <section className="detailPage" aria-label="Task detail">
           <div className="detailNav">
             <div className="detailNavLeft">
-              <button className="iconButton" aria-label="Back to board" title="Back to board" onClick={() => setSelectedId(null)}>
+              <button className="iconButton" aria-label="Back to board" title="Back to board" onClick={closeDraft}>
                 <ArrowLeftIcon />
               </button>
-              <span className="detailNavId">{draft.id}</span>
+              <span className="detailNavId">{transientDraftRef.current ? 'Unsaved draft' : draft.id}</span>
               <span className="saveHint">
                 {saveState === 'saving' && 'saving…'}
                 {saveState === 'saved' && 'saved'}
                 {saveState === 'error' && 'save failed'}
               </span>
             </div>
-            <div className="detailNavRight">
+            {!transientDraftRef.current && <div className="detailNavRight">
               <div className="menuWrap">
                 <button className="iconButton" aria-label="More actions" title="More actions" onClick={() => setMenuOpen((open) => !open)}>
                   <EllipsisVerticalIcon />
@@ -1028,7 +1094,7 @@ function App(): JSX.Element {
                   </>
                 )}
               </div>
-            </div>
+            </div>}
           </div>
 
           <div className="detailBody">
@@ -1056,14 +1122,19 @@ function App(): JSX.Element {
                 <select
                   className="propSelect"
                   aria-label="Status"
+                  disabled={transientDraftRef.current}
                   value={draft.status}
                   onChange={(event) => {
                     const status = event.target.value as TaskStatus;
-                    setDraft({ ...draft, status });
-                    vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: lastKnownUpdatedRef.current });
+                    if (transientDraftRef.current) {
+                      saveDraftNow({ ...draft, status });
+                    } else {
+                      setDraft({ ...draft, status });
+                      vscode.postMessage({ type: 'move-task', id: draft.id, status, expectedLastUpdated: lastKnownUpdatedRef.current });
+                    }
                   }}
                 >
-                  {(Object.keys(statusLabels) as TaskStatus[]).map((status) => (
+                  {(Object.keys(statusLabels) as TaskStatus[]).filter((status) => status !== 'human-review').map((status) => (
                     <option key={status} value={status}>{statusLabels[status]}</option>
                   ))}
                 </select>
@@ -1114,7 +1185,7 @@ function App(): JSX.Element {
             </label>
           </div>
 
-          <div className="actions">
+          {!transientDraftRef.current && <div className="actions">
             {draft.status === 'backlog' && (
               <Action
                 label={generatingIds.includes(draft.id) ? 'Drafting PRD…' : draft.description.trim() ? 'Regenerate PRD' : 'Generate PRD'}
@@ -1158,13 +1229,10 @@ function App(): JSX.Element {
                 <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>
               </div>
             )}
-            {draft.status === 'human-review' && (
+            {(draft.status === 'done' || draft.status === 'human-review') && (
               <Action label={draft.workflowMode === 'direct-on-main' ? 'Mark complete' : 'Ship (PR / merge)'} onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
             )}
-            {draft.status === 'human-review' && (
-              <Action label="Mark done" onClick={() => sendAction(draft, 'mark-done')} />
-            )}
-          </div>
+          </div>}
 
           {generatingIds.includes(draft.id) && (
             <p className="draftingNote">Drafting title, PRD, and checklists from the brief…</p>
@@ -1629,6 +1697,55 @@ function ThreadSection({
 
 function splitLines(value: string): string[] {
   return value.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
+function blankDraft(): Task {
+  return {
+    id: '',
+    title: '',
+    status: 'backlog',
+    priority: 'medium',
+    assignedAgent: 'unassigned',
+    qaAgent: 'unassigned',
+    brief: '',
+    description: '',
+    acceptanceCriteria: [],
+    qaChecklist: [],
+    designQaChecklist: [],
+    validationCommands: [],
+    relevantFiles: [],
+    constraints: [],
+    agentNotes: '',
+    qaNotes: [],
+    qaEvidence: [],
+    activityLog: [],
+    comments: [],
+    claimedBy: '',
+    qaClaimedBy: '',
+    branchName: '',
+    worktreePath: '',
+    claimedAt: '',
+    lastValidation: null,
+    shipResult: null,
+    lastUpdated: ''
+  };
+}
+
+function isMeaningfulBlankDraft(task: Task): boolean {
+  const textFields = [task.title, task.brief, task.description, task.agentNotes];
+  const listFields = [
+    task.acceptanceCriteria,
+    task.qaChecklist,
+    task.designQaChecklist,
+    task.validationCommands,
+    task.relevantFiles,
+    task.constraints
+  ];
+  return textFields.some((value) => value.trim().length > 0)
+    || listFields.some((items) => items.some((value) => value.trim().length > 0))
+    || task.priority !== 'medium'
+    || task.assignedAgent !== 'unassigned'
+    || task.qaAgent !== 'unassigned';
 }
 
 function cloneTask(task: Task): Task {

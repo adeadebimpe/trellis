@@ -18,6 +18,6 @@ assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'ready-for-agen
 assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'qa-running' }, 'human-review'), /agent workflow/);
 assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'qa-running' }, 'failed-qa'), /active QA workflow/);
 assert.doesNotThrow(() => assertStatusChangeAllowed({ ...task, status: 'human-review' }, 'done'));
-assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'building' }, 'done'), /Human Review/);
+assert.throws(() => assertStatusChangeAllowed({ ...task, status: 'building' }, 'done'), /legacy Human Review/);
 
 console.log('Task lifecycle tests passed.');
