@@ -135,7 +135,8 @@
     "test:migration": "node tests/stateMigration.test.mjs",
     "test:workflow-prompts": "node tests/workflowPrompts.test.mjs",
     "test:specialists": "node tests/specialists.test.mjs",
-    "test": "npm run test:prd && npm run test:draft-status && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks && npm run test:inference && npm run test:intake && npm run test:migration && npm run test:workflow-prompts && npm run test:specialists",
+    "test:task-ordering": "node tests/taskOrdering.test.mjs",
+    "test": "npm run test:prd && npm run test:draft-status && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks && npm run test:inference && npm run test:intake && npm run test:migration && npm run test:workflow-prompts && npm run test:specialists && npm run test:task-ordering",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"
