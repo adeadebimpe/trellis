@@ -207,6 +207,7 @@ const statusHints: Record<TaskStatus, string> = {
 
 function App(): JSX.Element {
   const [state, setState] = useState<BoardState | null>(null);
+  const [bootError, setBootError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Task | null>(null);
   const [projectDraft, setProjectDraft] = useState<ProjectContext | null>(null);
@@ -270,6 +271,7 @@ function App(): JSX.Element {
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       if (event.data.type === 'state') {
+        setBootError('');
         setState(event.data.state);
         // Restore in-flight PRD indicators after the webview is closed and reopened.
         setGeneratingIds(event.data.state.generatingIds ?? []);
@@ -296,6 +298,7 @@ function App(): JSX.Element {
         window.setTimeout(() => setSaveState('idle'), 1400);
       }
       if (event.data.type === 'error') {
+        if (!state) setBootError(event.data.message || 'Trellis could not load the board.');
         setSaveState('error');
         setProjectSaveState('error');
         setInferBusy(false);
@@ -711,6 +714,28 @@ function App(): JSX.Element {
     || column.id !== 'ready-for-qa'
     || state.tasks.some((task) => task.status === 'ready-for-qa')
   ) ?? [];
+
+  if (!state) {
+    return (
+      <main className="shell bootShell">
+        <section className="bootState" role={bootError ? 'alert' : 'status'} aria-live="polite">
+          <span className={`bootMark${bootError ? ' bootMarkError' : ''}`} aria-hidden="true">
+            {bootError ? '!' : <LoaderPinwheelIcon />}
+          </span>
+          <div>
+            <h1>{bootError ? 'Trellis could not load' : 'Loading Trellis'}</h1>
+            <p>{bootError || 'Reading your project and task board…'}</p>
+          </div>
+          {bootError && (
+            <button className="primary" onClick={() => {
+              setBootError('');
+              vscode.postMessage({ type: 'ready' });
+            }}>Retry</button>
+          )}
+        </section>
+      </main>
+    );
+  }
 
   if (state && (!state.settings.agentPermissions.decisionMade || permissionsOpen)) {
     const permissions = state.settings.agentPermissions;
