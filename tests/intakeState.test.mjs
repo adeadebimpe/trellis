@@ -11,7 +11,7 @@ execFileSync('./node_modules/.bin/esbuild', [
   `--outfile=${output}`
 ], { stdio: 'inherit' });
 
-const { queueIntake, updateIntake } = await import(`${pathToFileURL(output).href}?${Date.now()}`);
+const { dismissIntake, queueIntake, updateIntake } = await import(`${pathToFileURL(output).href}?${Date.now()}`);
 
 let pending = queueIntake([], 'request-a', 'First independently submitted task');
 pending = queueIntake(pending, 'request-b', 'Second independently submitted task');
@@ -30,5 +30,17 @@ pending = updateIntake(pending, 'request-b', { state: 'error', message: 'Unreada
 pending = updateIntake(pending, 'request-a', { state: 'done' });
 assert.equal(pending.find((item) => item.requestId === 'request-a').state, 'done');
 assert.equal(pending.find((item) => item.requestId === 'request-b').message, 'Unreadable attachment');
+
+pending = queueIntake(pending, 'request-c', 'Third independently submitted task');
+const dismissed = dismissIntake(pending, 'request-a');
+assert.deepEqual(
+  dismissed.map(({ requestId, state }) => ({ requestId, state })),
+  [
+    { requestId: 'request-c', state: 'queued' },
+    { requestId: 'request-b', state: 'error' }
+  ],
+  'dismissing one submission removes only that row and preserves the remaining order'
+);
+assert.equal(pending.length, 3, 'dismissing does not mutate the existing queue');
 
 console.log('Concurrent intake state tests passed.');
