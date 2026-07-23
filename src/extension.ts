@@ -11,7 +11,7 @@ import { generatedSpecDraftPatch, prdSplitDraftPatch } from './taskDrafts';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
-import { canRetryMissingBuildTerminal, canReuseBuildTerminalForQa, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
+import { canRetryMissingBuildTerminal, canReuseBuildTerminalForQa, isTerminalOwnedHandoff, missedQaHandoffRecoveryDelay, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
 import { renderWorkflowPrompt, WorkflowPromptKind } from './workflowPrompts';
 import { appendSpecialistBrief, specialistsForStage } from './specialists';
 
@@ -39,6 +39,8 @@ const TERMINAL_NAME_PATTERN = /^(?:Trellis|Agent Board): (\S+) (build|qa) \((Cla
 const diagnostics = vscode.window.createOutputChannel('Trellis Diagnostics');
 const autoQaStarting = new Set<string>();
 const autoQaAttemptedVersions = new Map<string, string>();
+const qaHandoffRecoveryTimers = new Map<string, NodeJS.Timeout>();
+const QA_HANDOFF_GRACE_MS = 5000;
 const autoRepairStarting = new Set<string>();
 const autoRepairAttemptedVersions = new Map<string, string>();
 // Task ids with a PRD generation in flight, so reopened webviews can restore the indicator.
@@ -1219,6 +1221,56 @@ async function startReadyQaTasks(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Automatic QA could not start for ${task.id}. ${message}`);
+    } finally {
+      autoQaStarting.delete(task.id);
+    }
+  }));
+
+  const now = Date.now();
+  const recoverable = tasks.filter((task) => {
+    if (
+      isTerminalOwnedHandoff(ownership[task.id], task.claimId, 'build')
+      || autoQaStarting.has(task.id)
+      || autoQaAttemptedVersions.get(task.id) === task.lastUpdated
+    ) {
+      return false;
+    }
+    const delay = missedQaHandoffRecoveryDelay(
+      task.status,
+      task.activeRun,
+      agentTerminals.get(task.id)?.kind,
+      task.lastUpdated,
+      now,
+      QA_HANDOFF_GRACE_MS
+    );
+    if (delay === undefined) return false;
+    if (delay > 0) {
+      if (!qaHandoffRecoveryTimers.has(task.id)) {
+        qaHandoffRecoveryTimers.set(task.id, setTimeout(() => {
+          qaHandoffRecoveryTimers.delete(task.id);
+          void refreshBoard();
+        }, delay));
+      }
+      return false;
+    }
+    return true;
+  });
+
+  await Promise.all(recoverable.map(async (task) => {
+    autoQaStarting.add(task.id);
+    autoQaAttemptedVersions.set(task.id, task.lastUpdated);
+    try {
+      const staleBuild = agentTerminals.get(task.id);
+      if (staleBuild?.kind === 'build') {
+        agentTerminals.delete(task.id);
+        staleBuild.terminal.dispose();
+      }
+      await clearTerminalOwnership(task.id);
+      diagnostics.appendLine(`[${new Date().toISOString()}] ${task.id} recovered a missed Build terminal completion event; starting QA in a fresh terminal.`);
+      await runStartQaAction(task.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Automatic QA recovery could not start for ${task.id}. ${message}`);
     } finally {
       autoQaStarting.delete(task.id);
     }

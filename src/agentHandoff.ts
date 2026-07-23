@@ -83,3 +83,24 @@ export function shouldStartAutomaticQa(
     && !starting
     && attemptedVersion !== currentVersion;
 }
+
+export function missedQaHandoffRecoveryDelay(
+  status: string,
+  run: ActiveRun | undefined,
+  registeredKind: RegisteredAgentKind,
+  lastUpdated: string,
+  nowMs: number,
+  graceMs: number
+): number | undefined {
+  if (
+    status !== 'ready-for-qa'
+    || run?.phase !== 'build'
+    || run.surface !== 'terminal'
+    || registeredKind === 'qa'
+  ) {
+    return undefined;
+  }
+  const readyAt = Date.parse(lastUpdated);
+  if (!Number.isFinite(readyAt)) return graceMs;
+  return Math.max(0, graceMs - Math.max(0, nowMs - readyAt));
+}

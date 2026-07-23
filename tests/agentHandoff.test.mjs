@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 const outfile = '/private/tmp/agent-board-agentHandoff.cjs';
 execFileSync('./node_modules/.bin/esbuild', ['src/agentHandoff.ts', '--bundle', '--platform=node', '--format=cjs', `--outfile=${outfile}`], { stdio: 'inherit' });
 const require = createRequire(import.meta.url);
-const { activeRunBlockReason, canRetryMissingBuildTerminal, canReuseBuildTerminalForQa, isTerminalOwnedHandoff, shouldStartAutomaticQa, terminalStartBlockReason } = require(outfile);
+const { activeRunBlockReason, canRetryMissingBuildTerminal, canReuseBuildTerminalForQa, isTerminalOwnedHandoff, missedQaHandoffRecoveryDelay, shouldStartAutomaticQa, terminalStartBlockReason } = require(outfile);
 
 assert.equal(shouldStartAutomaticQa('ready-for-qa', 'build', false, undefined, 'v1'), false, 'QA must wait for the build process to exit');
 assert.equal(shouldStartAutomaticQa('ready-for-qa', undefined, false, undefined, 'v1'), true, 'an exited build may hand off');
@@ -14,6 +14,35 @@ assert.equal(shouldStartAutomaticQa('ready-for-qa', undefined, true, undefined, 
 assert.equal(shouldStartAutomaticQa('ready-for-qa', undefined, false, 'v1', 'v1'), false, 'the same task version must not retry forever');
 assert.equal(shouldStartAutomaticQa('ready-for-qa', undefined, false, 'v1', 'v2'), true, 'a newly updated task version may retry');
 assert.equal(shouldStartAutomaticQa('building', 'build', false, undefined, 'v1'), false, 'build state must not start QA');
+const readyAt = '2026-07-23T12:00:00.000Z';
+const readyAtMs = Date.parse(readyAt);
+const recoveryBuildRun = { claimId: 'c1', phase: 'build', agent: 'codex', surface: 'terminal', startedAt: 'now' };
+assert.equal(
+  missedQaHandoffRecoveryDelay('ready-for-qa', recoveryBuildRun, 'build', readyAt, readyAtMs + 1000, 5000),
+  4000,
+  'a stale Build registration receives a bounded grace period'
+);
+assert.equal(
+  missedQaHandoffRecoveryDelay('ready-for-qa', recoveryBuildRun, 'build', readyAt, readyAtMs + 6000, 5000),
+  0,
+  'a missed terminal event becomes recoverable after the grace period'
+);
+assert.equal(
+  missedQaHandoffRecoveryDelay('ready-for-qa', recoveryBuildRun, undefined, readyAt, readyAtMs + 6000, 5000),
+  0,
+  'a missing or unreclaimed Build terminal is also recoverable'
+);
+assert.equal(missedQaHandoffRecoveryDelay('building', recoveryBuildRun, 'build', readyAt, readyAtMs + 6000, 5000), undefined);
+assert.equal(
+  missedQaHandoffRecoveryDelay('ready-for-qa', { ...recoveryBuildRun, surface: 'chat' }, undefined, readyAt, readyAtMs + 6000, 5000),
+  undefined,
+  'chat handoffs never use terminal recovery'
+);
+assert.equal(
+  missedQaHandoffRecoveryDelay('ready-for-qa', recoveryBuildRun, 'qa', readyAt, readyAtMs + 6000, 5000),
+  undefined,
+  'an existing QA registration always blocks recovery'
+);
 assert.equal(isTerminalOwnedHandoff({ claimId: 'build-1', phase: 'build', completedSuccessfully: true }, 'build-1', 'build'), true);
 assert.equal(isTerminalOwnedHandoff({ claimId: 'build-1', phase: 'build' }, 'build-1', 'build'), false, 'a tracked build must exit successfully');
 assert.equal(isTerminalOwnedHandoff(undefined, 'build-1', 'build'), false, 'chat claims have no terminal ownership');
