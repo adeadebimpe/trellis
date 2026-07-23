@@ -91,6 +91,10 @@
         "title": "Trellis: Generate Claude Automation Token"
       },
       {
+        "command": "agentBoard.showDiagnostics",
+        "title": "Trellis: Show Agent Terminal Diagnostics"
+      },
+      {
         "command": "agentBoard.freshStart",
         "title": "Trellis: Fresh Start"
       }
