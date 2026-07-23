@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
+import { PendingIntake, queueIntake, updateIntake } from './intakeState';
 
 type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done' | 'merged';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 type Priority = 'high' | 'medium' | 'low';
 type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
 type WorkflowMode = 'branch-per-task' | 'direct-on-main';
+type IntakeFile = { key: string; name: string; path?: string; mediaType?: string; base64?: string };
 
 interface ActivityEntry {
   timestamp: string;
@@ -32,7 +34,9 @@ interface Task {
   qaAgent: AssignedAgent;
   brief: string;
   description: string;
+  descriptionRichText?: string;
   acceptanceCriteria: string[];
+  acceptanceCriteriaRichText?: string;
   qaChecklist: string[];
   designQaChecklist: string[];
   validationCommands: string[];
@@ -215,7 +219,9 @@ function App(): JSX.Element {
   const [createMode, setCreateMode] = useState<'quick' | 'prd' | 'bug'>('quick');
   const [createText, setCreateText] = useState('');
   const [createAgent, setCreateAgent] = useState<AssignedAgent>('unassigned');
-  const [intakeFiles, setIntakeFiles] = useState<Array<{ name: string; path: string }>>([]);
+  const [intakeFiles, setIntakeFiles] = useState<IntakeFile[]>([]);
+  const [pendingIntakes, setPendingIntakes] = useState<PendingIntake[]>([]);
+  const [intakeNotice, setIntakeNotice] = useState('');
   const [createQaAgent, setCreateQaAgent] = useState<AssignedAgent>('unassigned');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
@@ -287,7 +293,11 @@ function App(): JSX.Element {
         setInferBusy(false);
         setReviewSubmitting(false);
         setPrdSplitting(false);
-        setCreateBusy(null);
+        if (event.data.requestId) {
+          setPendingIntakes((items) => updateIntake(items, event.data.requestId, { state: 'error', message: event.data.message }));
+        } else {
+          setCreateBusy(null);
+        }
       }
       if (event.data.type === 'saved-project') {
         if (projectEditVersion.current === projectSentVersion.current) {
@@ -373,14 +383,17 @@ function App(): JSX.Element {
       if (event.data.type === 'intake-files-selected') {
         const files = Array.isArray(event.data.files) ? event.data.files : [];
         setIntakeFiles((current) => {
-          const byPath = new Map(current.map((file) => [file.path, file]));
+          const byPath = new Map(current.map((file) => [file.key, file]));
           for (const file of files) {
             if (file && typeof file.name === 'string' && typeof file.path === 'string') {
-              byPath.set(file.path, { name: file.name, path: file.path });
+              byPath.set(file.path, { key: file.path, name: file.name, path: file.path });
             }
           }
           return [...byPath.values()];
         });
+      }
+      if (event.data.type === 'intake-started') {
+        setPendingIntakes((items) => updateIntake(items, event.data.requestId, { state: 'drafting', taskId: event.data.id }));
       }
       if (event.data.type === 'prd-split-started') {
         setPrdSplitting(true);
@@ -397,17 +410,11 @@ function App(): JSX.Element {
         setCreateOpen(false);
       }
       if (event.data.type === 'intake-created') {
-        setCreateBusy(null);
-        if (createOpen) {
-          // The user waited on the create screen: take them to the drafted task.
-          setCreateText('');
-          setIntakeFiles([]);
-          setCreateOpen(false);
-          setSelectedId(event.data.id);
-        } else {
-          // They closed early: open the task only if nothing else is focused.
-          setSelectedId((current) => (current === null ? event.data.id : current));
-        }
+        setPendingIntakes((items) => updateIntake(items, event.data.requestId, {
+          state: event.data.generated ? 'done' : 'error',
+          taskId: event.data.id,
+          message: event.data.generated ? undefined : 'The task was saved, but its PRD could not be generated.'
+        }));
       }
     };
     window.addEventListener('message', listener);
@@ -563,32 +570,72 @@ function App(): JSX.Element {
 
   const sendCreate = () => {
     const text = createText.trim();
-    if (!text || createBusy || prdSplitting) {
+    if (!text || (createMode === 'prd' && (createBusy || prdSplitting))) {
       return;
     }
     if (createMode === 'prd') {
       setCreateBusy('prd');
       vscode.postMessage({ type: 'create-from-prd', prd: text, agent: createAgent, qaAgent: createQaAgent });
     } else {
-      setCreateBusy('task');
+      const requestId = `intake-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const mentions = Array.from(new Set(
         [...text.matchAll(/@([\w./~-]+)/g)].map((match) => match[1]).filter((path) => workspaceFiles.includes(path))
       ));
       vscode.postMessage({
         type: 'create-intake',
+        requestId,
         agent: createAgent,
         qaAgent: createQaAgent,
         mentions,
         intake: {
           text,
           intent: createMode === 'bug' ? 'investigate' : 'single-task',
-          attachmentPaths: intakeFiles.map((file) => file.path)
+          attachmentPaths: intakeFiles.flatMap((file) => file.path ? [file.path] : []),
+          pastedFiles: intakeFiles.flatMap((file) => file.base64 ? [{
+            name: file.name,
+            mediaType: file.mediaType,
+            base64: file.base64
+          }] : [])
         }
       });
+      setPendingIntakes((items) => queueIntake(items, requestId, text));
+      setCreateText('');
+      setIntakeFiles([]);
     }
     // Stay on the create screen until the draft lands; the back arrow can
     // dismiss it early and generation continues in the background.
     setMentionQuery(null);
+  };
+
+  const pasteIntoComposer = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    const accepted = files.filter((file) =>
+      /^(?:image\/(?:png|jpeg|gif|webp)|text\/(?:plain|markdown))$/i.test(file.type)
+      || /\.(?:png|jpe?g|gif|webp|md|txt)$/i.test(file.name)
+    );
+    const rejected = files.filter((file) => !accepted.includes(file));
+    if (rejected.length) {
+      setIntakeNotice(`Could not attach ${rejected.map((file) => file.name || 'clipboard file').join(', ')}. Use an image, .md, or .txt file.`);
+    }
+    const loaded = await Promise.all(accepted.map(async (file, index): Promise<IntakeFile | null> => {
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const base64 = dataUrl.split(',', 2)[1];
+        if (!base64) throw new Error('empty');
+        return {
+          key: `paste-${Date.now()}-${index}-${file.name}`,
+          name: file.name || `pasted-image-${index + 1}.${extensionForMediaType(file.type)}`,
+          mediaType: file.type || mediaTypeForFileName(file.name),
+          base64
+        };
+      } catch {
+        setIntakeNotice(`${file.name || 'Clipboard file'} could not be read.`);
+        return null;
+      }
+    }));
+    setIntakeFiles((current) => [...current, ...loaded.filter((file): file is IntakeFile => file !== null)]);
   };
 
   const insertMention = (path: string) => {
@@ -955,12 +1002,30 @@ function App(): JSX.Element {
             </div>
           </div>
           <footer className="chatComposer" aria-label="Task composer">
-            {createBusy && (
+            {createBusy === 'prd' && (
               <p className="chatStatus" role="status" aria-live="polite">
                 <LoaderPinwheelIcon />
-                {createBusy === 'prd' ? 'Bulk generating tasks…' : 'Drafting the PRD…'} You can go back — this continues in the background.
+                Bulk generating tasks… You can go back — this continues in the background.
               </p>
             )}
+            {pendingIntakes.length > 0 && (
+              <div className="intakeQueue" aria-label="Recent task submissions" aria-live="polite">
+                {pendingIntakes.map((item) => (
+                  <button
+                    type="button"
+                    key={item.requestId}
+                    className={`intakeQueueItem intake-${item.state}`}
+                    disabled={!item.taskId}
+                    title={item.message || item.summary}
+                    onClick={() => item.taskId && setSelectedId(item.taskId)}
+                  >
+                    <span className="intakeQueueState">{item.state === 'done' ? 'Ready' : item.state === 'error' ? 'Error' : 'Drafting'}</span>
+                    <span className="intakeQueueSummary">{item.summary}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {intakeNotice && <p className="intakeNotice" role="alert">{intakeNotice}</p>}
             {mentionQuery !== null && mentionMatches.length > 0 && (
               <>
                 <div className="menuOverlay" onClick={() => setMentionQuery(null)} />
@@ -974,13 +1039,13 @@ function App(): JSX.Element {
             {intakeFiles.length > 0 && (
               <div className="attachmentChips" aria-label="Selected attachments">
                 {intakeFiles.map((file) => (
-                  <span className="attachmentChip" key={file.path} title={file.path}>
+                  <span className="attachmentChip" key={file.key} title={file.path || file.name}>
                     <span>{file.name}</span>
                     <button
                       type="button"
                       aria-label={`Remove ${file.name}`}
                       title={`Remove ${file.name}`}
-                      onClick={() => setIntakeFiles((current) => current.filter((item) => item.path !== file.path))}
+                      onClick={() => setIntakeFiles((current) => current.filter((item) => item.key !== file.key))}
                     >
                       <XIcon />
                     </button>
@@ -992,7 +1057,6 @@ function App(): JSX.Element {
               rows={1}
               className="chatInput"
               autoFocus
-              disabled={createBusy !== null}
               placeholder={createMode === 'prd'
                 ? 'Paste a PRD or bullet-point requirements… (Cmd+Enter creates tasks)'
                 : createMode === 'bug'
@@ -1002,6 +1066,7 @@ function App(): JSX.Element {
               ref={autoGrow}
               onMouseDown={() => setMentionQuery(null)}
               onFocus={() => setMentionQuery(null)}
+              onPaste={pasteIntoComposer}
               onChange={(event) => {
                 autoGrow(event.target);
                 setCreateText(event.target.value);
@@ -1068,7 +1133,7 @@ function App(): JSX.Element {
                 className="chatSend"
                 aria-label={createMode === 'prd' ? 'Bulk generate tasks' : 'Create task'}
                 title={createMode === 'prd' ? 'Bulk generate tasks' : 'Create task'}
-                disabled={!createText.trim() || createBusy !== null || prdSplitting}
+                disabled={!createText.trim() || (createMode === 'prd' && (createBusy !== null || prdSplitting))}
                 onClick={sendCreate}
               >
                 <ArrowUpIcon />
@@ -1281,13 +1346,11 @@ function App(): JSX.Element {
                 PRD Description
               </button>
               {prdOpen && (
-                <textarea
-                  value={draft.description}
-                  ref={autoGrow}
-                  onChange={(event) => {
-                    autoGrow(event.target);
-                    updateDraft({ ...draft, description: event.target.value });
-                  }}
+                <RichTextEditor
+                  ariaLabel="PRD description"
+                  html={draft.descriptionRichText}
+                  fallbackText={draft.description}
+                  onChange={(html, text) => updateDraft({ ...draft, descriptionRichText: html, description: text })}
                 />
               )}
             </section>
@@ -1297,13 +1360,15 @@ function App(): JSX.Element {
                 Acceptance Criteria
               </button>
               {acOpen && (
-                <textarea
-                  value={(draft.acceptanceCriteria ?? []).join('\n')}
-                  ref={autoGrow}
-                  onChange={(event) => {
-                    autoGrow(event.target);
-                    updateDraft({ ...draft, acceptanceCriteria: splitLines(event.target.value) });
-                  }}
+                <RichTextEditor
+                  ariaLabel="Acceptance criteria"
+                  html={draft.acceptanceCriteriaRichText}
+                  fallbackText={(draft.acceptanceCriteria ?? []).join('\n')}
+                  onChange={(html, text, items) => updateDraft({
+                    ...draft,
+                    acceptanceCriteriaRichText: html,
+                    acceptanceCriteria: items.length ? items : splitLines(text)
+                  })}
                 />
               )}
             </section>
@@ -1505,6 +1570,89 @@ function App(): JSX.Element {
   );
 }
 
+function RichTextEditor({
+  ariaLabel,
+  html,
+  fallbackText,
+  onChange
+}: {
+  ariaLabel: string;
+  html?: string;
+  fallbackText: string;
+  onChange: (html: string, text: string, items: string[]) => void;
+}): JSX.Element {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const rendered = html ? sanitizeRichHtml(html) : textToRichHtml(fallbackText);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (editor && document.activeElement !== editor && editor.innerHTML !== rendered) {
+      editor.innerHTML = rendered;
+    }
+  }, [rendered]);
+
+  useEffect(() => {
+    const update = () => setSelectionVersion((version) => version + 1);
+    document.addEventListener('selectionchange', update);
+    return () => document.removeEventListener('selectionchange', update);
+  }, []);
+
+  const emit = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const normalizedHtml = editor.innerHTML === '<br>' ? '' : editor.innerHTML;
+    const text = editor.innerText.replace(/\u00a0/g, ' ').trim();
+    const blocks = Array.from(editor.querySelectorAll('li, p, div'))
+      .filter((node) => node.tagName === 'LI' || (node.tagName !== 'DIV' || node.children.length === 0))
+      .filter((node) => !node.closest('li') || node.tagName === 'LI')
+      .map((node) => (node.textContent ?? '').trim())
+      .filter(Boolean);
+    onChange(normalizedHtml, text, blocks);
+  };
+
+  const run = (command: 'formatBlock' | 'insertUnorderedList' | 'insertOrderedList', value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    emit();
+    setSelectionVersion((version) => version + 1);
+  };
+
+  const active = (command: string) => {
+    void selectionVersion;
+    return document.queryCommandState(command);
+  };
+
+  return (
+    <div className="richEditor">
+      <div className="richToolbar" role="toolbar" aria-label={`${ariaLabel} formatting`}>
+        <button type="button" title="Paragraph" aria-label="Paragraph" onMouseDown={(event) => event.preventDefault()} onClick={() => run('formatBlock', 'p')}>¶</button>
+        <button type="button" title="Bulleted list" aria-label="Bulleted list" aria-pressed={active('insertUnorderedList')} onMouseDown={(event) => event.preventDefault()} onClick={() => run('insertUnorderedList')}>• List</button>
+        <button type="button" title="Numbered list" aria-label="Numbered list" aria-pressed={active('insertOrderedList')} onMouseDown={(event) => event.preventDefault()} onClick={() => run('insertOrderedList')}>1. List</button>
+      </div>
+      <div
+        ref={editorRef}
+        className="richEditorSurface"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label={ariaLabel}
+        aria-multiline="true"
+        data-placeholder={`Add ${ariaLabel.toLowerCase()}…`}
+        onInput={emit}
+        onBlur={emit}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData('text/plain');
+          if (text) {
+            event.preventDefault();
+            document.execCommand('insertText', false, text);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function WorkflowModePicker({ value, onChange, setup = false }: { value: WorkflowMode; onChange: (mode: WorkflowMode) => void; setup?: boolean }): JSX.Element {
   return (
     <fieldset className={`workflowPicker ${setup ? 'workflowPickerSetup' : ''}`}>
@@ -1521,6 +1669,52 @@ function WorkflowModePicker({ value, onChange, setup = false }: { value: Workflo
       </div>
     </fieldset>
   );
+}
+
+function textToRichHtml(value: string): string {
+  return String(value ?? '').split(/\n{2,}|\n/).filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join('');
+}
+
+function sanitizeRichHtml(value: string): string {
+  const documentValue = new DOMParser().parseFromString(value, 'text/html');
+  const allowed = new Set(['P', 'DIV', 'BR', 'UL', 'OL', 'LI']);
+  for (const element of Array.from(documentValue.body.querySelectorAll('*'))) {
+    for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name);
+    if (!allowed.has(element.tagName)) element.replaceWith(...Array.from(element.childNodes));
+  }
+  return documentValue.body.innerHTML;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character] ?? character);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function extensionForMediaType(mediaType: string): string {
+  return ({ 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' } as Record<string, string>)[mediaType] ?? 'png';
+}
+
+function mediaTypeForFileName(name: string): string {
+  if (/\.md$/i.test(name)) return 'text/markdown';
+  if (/\.txt$/i.test(name)) return 'text/plain';
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg';
+  if (/\.gif$/i.test(name)) return 'image/gif';
+  if (/\.webp$/i.test(name)) return 'image/webp';
+  return 'image/png';
 }
 
 // Sizes a textarea to its content so the detail title wraps like the design
