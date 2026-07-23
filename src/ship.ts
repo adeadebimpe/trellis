@@ -169,7 +169,7 @@ async function shipViaLocalMerge(
     .split('\n')
     .filter(Boolean)
     // Board state files churn constantly and never collide with task branches.
-    .filter((line) => !line.slice(3).startsWith('.agent-board'));
+    .filter((line) => !line.slice(3).startsWith('.trellis'));
   if (blockingChanges.length) {
     throw new Error(`The main checkout has uncommitted changes (${blockingChanges.length} file(s)); commit or stash them before shipping.`);
   }

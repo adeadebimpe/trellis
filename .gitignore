@@ -1,6 +1,7 @@
-node_modules/
+node_modules
 dist/
 *.vsix
 dazzle/
+.trellis/
 .agent-board/
 .DS_Store

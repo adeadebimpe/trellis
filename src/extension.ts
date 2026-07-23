@@ -128,12 +128,12 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Anchored so JSON inside .agent-board/worktrees/* checkouts never triggers refreshes.
+  // Anchored so JSON inside .trellis/worktrees/* checkouts never triggers refreshes.
   const folder = vscode.workspace.workspaceFolders?.[0];
   const watcher = vscode.workspace.createFileSystemWatcher(
     folder
-      ? new vscode.RelativePattern(folder, '.agent-board/{tasks/*.json,project.json}')
-      : '**/.agent-board/{tasks/*.json,project.json}'
+      ? new vscode.RelativePattern(folder, '.trellis/{tasks/*.json,project.json}')
+      : '**/.trellis/{tasks/*.json,project.json}'
   );
   watcher.onDidCreate(scheduleRefresh);
   watcher.onDidChange(scheduleRefresh);
@@ -403,7 +403,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
       case 'workspace-files': {
         const uris = await vscode.workspace.findFiles(
           '**/*',
-          '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.agent-board/**,**/*.vsix,**/*.png,**/*.jpg}',
+          '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.trellis/**,**/*.vsix,**/*.png,**/*.jpg}',
           500
         );
         const files = uris.map((uri) => vscode.workspace.asRelativePath(uri, false)).sort((a, b) => a.localeCompare(b));
@@ -736,7 +736,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   }
 
   await ensureAgentCliAvailable(agent);
-  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent, 'terminal']);
+  await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/claim-task.mjs', id, agent, 'terminal']);
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
   if (claimed.claimWarning) {
     vscode.window.showWarningMessage(claimed.claimWarning);
@@ -769,7 +769,7 @@ async function runStartQaAction(id: string): Promise<void> {
   }
 
   await ensureAgentCliAvailable(agent);
-  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent, 'terminal']);
+  await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/start-qa.mjs', id, agent, 'terminal']);
   const started = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
   await setTerminalOwnership(id, started.qaClaimId, 'qa');
@@ -1011,15 +1011,15 @@ function agentLaunchCommand(
 }
 
 function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
-  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.agent-board/scripts`;
+  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.trellis/scripts`;
   return [
     `You are the assigned implementation agent for Trellis task ${id}.`,
     worktreePath && branchName
       ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
       : 'This task uses direct-on-main mode. Work in the repository root, keep changes scoped to this task, and do not start another build concurrently.',
-    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree; the board scripts resolve the main checkout automatically.`,
-    `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
+    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .trellis files inside a worktree; the board scripts resolve the main checkout automatically.`,
+    `Read ${mainRoot}/.trellis/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
     `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
@@ -1028,15 +1028,15 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
 }
 
 function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
-  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.agent-board/scripts`;
+  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.trellis/scripts`;
   return [
     `You are the QA agent for Trellis task ${id}.`,
     worktreePath && branchName
       ? `Your working directory is the task's git worktree on branch ${branchName}; review the implementation here.`
       : 'Review the direct-on-main implementation in the repository root.',
-    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .agent-board files inside a worktree.`,
-    `Read ${mainRoot}/.agent-board/project.json and the task JSON.`,
+    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .trellis files inside a worktree.`,
+    `Read ${mainRoot}/.trellis/project.json and the task JSON.`,
     'Review acceptanceCriteria, qaChecklist, designQaChecklist, changed files on the branch, agentNotes, and validation evidence.',
     `Run node "${scripts}/run-validation.mjs" ${id} to verify the validation commands pass, plus any functional checks the task calls for. Record findings in qaEvidence.`,
     `If QA passes, run: node "${scripts}/pass-qa.mjs" ${id} "QA passed."`,
@@ -1045,15 +1045,15 @@ function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branc
 }
 
 function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
-  const taskFile = `${mainRoot}/.agent-board/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.agent-board/scripts`;
+  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
+  const scripts = `${mainRoot}/.trellis/scripts`;
   return [
     `You are the implementation agent automatically repairing failed QA for Trellis task ${id}.`,
     worktreePath && branchName
       ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
       : 'This repair uses direct-on-main mode. Work in the repository root and keep the repair scoped to this task.',
     `Read the durable task record at ${taskFile}, especially the latest comments, qaNotes, qaEvidence, activityLog, and failed validation output.`,
-    `Also read ${mainRoot}/.agent-board/project.json before editing.`,
+    `Also read ${mainRoot}/.trellis/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
     `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
     `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal and continue any returned task until it prints {"noTask":true}.`,
@@ -1077,7 +1077,7 @@ async function freshStart(context: vscode.ExtensionContext): Promise<void> {
   const storage = await resolveStorage();
   const choice = await vscode.window.showWarningMessage(
     'Fresh start Trellis?',
-    { modal: true, detail: 'Reset setup only clears saved Trellis provider/onboarding state. Reset board files also recreates .agent-board/ for this workspace.' },
+    { modal: true, detail: 'Reset setup only clears saved Trellis provider/onboarding state. Reset board files also recreates .trellis/ for this workspace.' },
     'Reset setup only',
     'Reset board files'
   );
@@ -1093,7 +1093,7 @@ async function freshStart(context: vscode.ExtensionContext): Promise<void> {
     await storage.resetBoardFiles();
     panel?.webview.postMessage({ type: 'fresh-started' });
     sidebarView?.webview.postMessage({ type: 'fresh-started' });
-    vscode.window.showInformationMessage('Trellis setup and .agent-board files were reset.');
+    vscode.window.showInformationMessage('Trellis setup and .trellis files were reset.');
   } else {
     vscode.window.showInformationMessage('Trellis setup state was reset.');
   }
@@ -1212,7 +1212,7 @@ async function startFailedQaRepairs(): Promise<void> {
       },
       expectedLastUpdated: task.lastUpdated
     });
-    await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', task.id, agent, 'terminal']);
+    await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/claim-task.mjs', task.id, agent, 'terminal']);
     const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
     const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
     await setTerminalOwnership(task.id, repairing.claimId, 'build');

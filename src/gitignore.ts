@@ -1,22 +1,22 @@
-const AGENT_BOARD_IGNORE_ENTRY = '.agent-board/';
+const TRELLIS_IGNORE_ENTRY = '.trellis/';
 
-export function hasAgentBoardIgnore(content: string): boolean {
+export function hasTrellisIgnore(content: string): boolean {
   return content.split(/\r?\n/).some((line) => {
     const pattern = line.trim();
-    return pattern === '.agent-board'
-      || pattern === '.agent-board/'
-      || pattern === '/.agent-board'
-      || pattern === '/.agent-board/';
+    return pattern === '.trellis'
+      || pattern === '.trellis/'
+      || pattern === '/.trellis'
+      || pattern === '/.trellis/';
   });
 }
 
-export function ensureAgentBoardIgnore(content: string): string {
-  if (hasAgentBoardIgnore(content)) {
+export function ensureTrellisIgnore(content: string): string {
+  if (hasTrellisIgnore(content)) {
     return content;
   }
   if (!content) {
-    return `${AGENT_BOARD_IGNORE_ENTRY}\n`;
+    return `${TRELLIS_IGNORE_ENTRY}\n`;
   }
   const separator = content.endsWith('\n') ? '' : '\n';
-  return `${content}${separator}${AGENT_BOARD_IGNORE_ENTRY}\n`;
+  return `${content}${separator}${TRELLIS_IGNORE_ENTRY}\n`;
 }

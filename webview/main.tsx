@@ -1530,7 +1530,7 @@ function App(): JSX.Element {
                 value={projectDraft.contextNotes ?? ''}
                 onChange={(value) => updateProject({ ...projectDraft, contextNotes: value })}
               />
-              <p className="fieldHint">Shared with agents during PRD generation. Stored in .agent-board/project.json.</p>
+              <p className="fieldHint">Shared with agents during PRD generation. Stored in .trellis/project.json.</p>
             </div>
 
             <div>

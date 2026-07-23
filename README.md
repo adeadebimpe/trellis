@@ -21,7 +21,7 @@ Trellis is a repo-native Kanban command centre for coordinating Codex and Claude
 4. Add a task, generate or complete its specification, and move it to **Ready for Agent**.
 5. Assign Codex or Claude Code and start the build.
 
-Trellis creates a `.agent-board/` directory containing project context, task records, helper scripts, locks, and task worktrees. The directory name is retained for compatibility with existing repositories.
+Trellis creates a `.trellis/` directory containing project context, task records, helper scripts, locks, and task worktrees. When an existing workspace contains the legacy `.agent-board/` directory, Trellis migrates it to `.trellis/` and repairs registered Git worktree paths automatically.
 
 ## Agent setup
 
@@ -42,13 +42,13 @@ Choose a provider with **Trellis: Configure Spec Generation**. API keys are stor
 
 ## Repository data and privacy
 
-Task data stays in the current repository under `.agent-board/`. CLI agents run through their official local commands and follow the permissions and data policies of the provider you choose. Trellis does not operate a separate hosted service.
+Task data stays in the current repository under `.trellis/`. CLI agents run through their official local commands and follow the permissions and data policies of the provider you choose. Trellis does not operate a separate hosted service.
 
-By default, Trellis adds `.agent-board/` to `.gitignore`. Disable **Trellis › Git-ignore Board Directory** if your team intentionally wants to commit project context and task history.
+By default, Trellis adds `.trellis/` to `.gitignore`. Disable **Trellis › Git-ignore Board Directory** if your team intentionally wants to commit project context and task history.
 
 ## Compatibility
 
-The 0.1 release changes the public product name to Trellis. Existing `.agent-board/` directories, `agentBoard.*` settings, command IDs, and task records remain supported; no repository migration is required.
+Existing `agentBoard.*` settings and command IDs remain supported. Legacy `.agent-board/` task data is migrated to `.trellis/` on first use. If both directories already exist, Trellis stops and asks you to resolve the duplicate state instead of guessing which copy is authoritative.
 
 ## Requirements
 
