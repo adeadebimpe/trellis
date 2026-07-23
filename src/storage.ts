@@ -36,6 +36,10 @@ export class AgentBoardStorage {
     return vscode.Uri.joinPath(this.root, '.agent-board');
   }
 
+  async isInitialized(): Promise<boolean> {
+    return this.exists(this.boardDir);
+  }
+
   async getClaudePermissionStatus(allowlist: string[]): Promise<{ enabled: boolean; settingsExist: boolean }> {
     const uri = vscode.Uri.joinPath(this.root, '.claude', 'settings.json');
     if (!await this.exists(uri)) return { enabled: false, settingsExist: false };
@@ -159,10 +163,6 @@ export class AgentBoardStorage {
 
   async loadBoardState(): Promise<{ board: AgentBoardFile; tasks: AgentBoardTask[]; project: ProjectContext }> {
     let tasks = await this.loadTasksOrEmpty();
-    if (!await this.exists(this.boardDir)) {
-      await this.prepareAgentFiles();
-      tasks = await this.loadTasks();
-    }
     const archivedIds = selectMergedTasksToArchive(tasks);
     for (const id of archivedIds) {
       await this.archiveTask(id);
@@ -558,6 +558,9 @@ export class AgentBoardStorage {
   }
 
   private async loadProjectContext(): Promise<ProjectContext> {
+    if (!await this.exists(this.boardDir)) {
+      return this.defaultProjectContext();
+    }
     await this.ensureProjectContext();
     return this.readJson<ProjectContext>(this.projectUri());
   }
