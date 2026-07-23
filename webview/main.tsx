@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
 import { PendingIntake, queueIntake, updateIntake } from './intakeState';
+import { mergeSpecialistDrafts } from './specialistDrafts';
 import { branchNameValidationError, generatedTaskBranchName } from '../src/branchNames';
 import { compareTasksByLatestUpdate } from '../src/taskOrdering';
 
@@ -1680,7 +1681,11 @@ function SpecialistManager({ specialists, onChange }: { specialists: Specialist[
   const [removeId, setRemoveId] = useState<string | null>(null);
 
   useEffect(() => {
-    setDrafts(specialists.map((item) => ({ ...item, stages: [...item.stages] })));
+    setDrafts((currentDrafts) => mergeSpecialistDrafts(
+      specialists.map((item) => ({ ...item, stages: [...item.stages] })),
+      currentDrafts,
+      errors
+    ));
   }, [specialists]);
 
   const edit = (id: string, patch: Partial<Specialist>) => {
