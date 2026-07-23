@@ -1312,6 +1312,7 @@ function App(): JSX.Element {
               const run = state.activeRuns[draft.id];
               const isTerminal = run.surface === 'terminal';
               const hasLiveTerminal = isTerminal && state.liveTerminals.includes(draft.id);
+              const canRetryBuild = isTerminal && run.phase === 'build' && !hasLiveTerminal;
               const awaitingChatQa = run.surface === 'chat' && draft.status === 'ready-for-qa';
               return (
               <div className="terminalBanner" role="status">
@@ -1319,9 +1320,12 @@ function App(): JSX.Element {
                 <span className="terminalBannerText">
                   {awaitingChatQa
                     ? `Build finished in ${run.agent} chat. QA is reserved for that chat; no terminal will start.`
+                    : canRetryBuild
+                      ? 'The build may have failed. Retry the build.'
                     : `${run.agent} is running ${run.phase === 'qa' ? 'QA' : 'Build'} in ${isTerminal ? 'a Trellis terminal' : 'chat'}. Another session will not be started.`}
                 </span>
                 {hasLiveTerminal && <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>}
+                {canRetryBuild && <button className="ghost" onClick={() => vscode.postMessage({ type: 'retry-build', id: draft.id })}>Retry build</button>}
               </div>
               );
             })()}

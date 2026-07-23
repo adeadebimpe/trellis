@@ -11,7 +11,7 @@ import { generatedSpecDraftPatch, prdSplitDraftPatch } from './taskDrafts';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
-import { isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
+import { canRetryMissingBuildTerminal, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -617,6 +617,10 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         }
         break;
       }
+      case 'retry-build':
+        await runRetryBuildAction(message.id);
+        await postState();
+        break;
       case 'ship-task':
         await runShipAction(message.id, message.expectedLastUpdated);
         await postState();
@@ -755,6 +759,29 @@ async function runStartBuildAction(id: string): Promise<void> {
     }
   });
   await postState();
+}
+
+async function runRetryBuildAction(id: string): Promise<void> {
+  const storage = await resolveStorage();
+  const task = findTask((await storage.loadBoardState()).tasks, id);
+  if (!canRetryMissingBuildTerminal(task.status, task.activeRun, agentTerminals.has(id))) {
+    throw new Error('This build can only be retried after its Trellis terminal is no longer available.');
+  }
+
+  await clearTerminalOwnership(id);
+  const now = new Date().toISOString();
+  await storage.saveTask({
+    task: {
+      id,
+      status: 'ready-for-agent',
+      activityLog: [
+        ...(task.activityLog ?? []),
+        { timestamp: now, actor: 'vscode', message: 'The previous build terminal was unavailable. Retrying the build.' }
+      ]
+    },
+    expectedLastUpdated: task.lastUpdated
+  });
+  await runStartBuildAction(id);
 }
 
 async function runStartQaAction(id: string): Promise<void> {

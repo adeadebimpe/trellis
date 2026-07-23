@@ -45,6 +45,17 @@ export function activeRunBlockReason(
   return `${taskId} already has ${phase} running with ${run.agent} in ${surface}. Return to that session instead of starting another ${requestedPhase}.`;
 }
 
+export function canRetryMissingBuildTerminal(
+  status: string,
+  run: ActiveRun | undefined,
+  hasLiveTerminal: boolean
+): boolean {
+  return status === 'building'
+    && run?.phase === 'build'
+    && run.surface === 'terminal'
+    && !hasLiveTerminal;
+}
+
 export function isTerminalOwnedHandoff(
   ownership: TerminalOwnership | undefined,
   claimId: string | undefined,
