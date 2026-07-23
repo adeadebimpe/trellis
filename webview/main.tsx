@@ -713,7 +713,7 @@ function App(): JSX.Element {
             <p className="eyebrow">Agent permissions</p>
             <h1>{permissions.enabled ? 'Standard workflow is pre-authorized' : 'Let agents finish without repeated prompts?'}</h1>
             <p>
-              Trellis can authorize the standard workflow once. Claude Code receives the exact allowlist below; Codex runs non-interactively inside its workspace-write sandbox. You can revoke this later from the board menu. Push, hard reset, file deletion, and full-access bypass are not included.
+              Authorize Trellis once to run its standard workflow. Claude Code and Codex get the permissions they need, while Codex stays limited to this workspace. You can revoke access anytime from the board menu. Pushes, hard resets, file deletions, and full-access bypasses aren’t allowed.
             </p>
             <p className="permissionMode"><strong>Codex mode</strong><code>{permissions.codexMode}</code></p>
             <ul className="permissionList">
