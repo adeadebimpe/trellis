@@ -15,6 +15,17 @@ assert.deepEqual(codexAutomationArgs(true, {
   taskId: 'TASK-001'
 }), [
   '--sandbox', 'workspace-write', '--ask-for-approval', 'never',
+  '--add-dir', '/repo/.git',
+  '--add-dir', '/repo/.agent-board/tasks',
+  '--add-dir', '/repo/.agent-board/locks'
+]);
+assert.deepEqual(codexAutomationArgs(true, {
+  mainRoot: '/repo/',
+  worktreePath: '/repo/.agent-board/worktrees/TASK-001',
+  taskId: 'TASK-001'
+}), [
+  '--sandbox', 'workspace-write', '--ask-for-approval', 'never',
+  '--add-dir', '/repo/.git',
   '--add-dir', '/repo/.agent-board/tasks',
   '--add-dir', '/repo/.agent-board/locks'
 ]);

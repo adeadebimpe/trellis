@@ -15,8 +15,9 @@ export function codexAutomationArgs(enabled: boolean, scope?: ClaudeAutomationSc
   if (!enabled) return [];
   const args: string[] = [...CODEX_SCOPED_AUTOMATION_ARGS];
   if (scope) {
-    const boardRoot = `${scope.mainRoot.replace(/\/+$/, '')}/.agent-board`;
-    args.push('--add-dir', `${boardRoot}/tasks`, '--add-dir', `${boardRoot}/locks`);
+    const mainRoot = scope.mainRoot.replace(/\/+$/, '');
+    const boardRoot = `${mainRoot}/.agent-board`;
+    args.push('--add-dir', `${mainRoot}/.git`, '--add-dir', `${boardRoot}/tasks`, '--add-dir', `${boardRoot}/locks`);
   }
   return args;
 }
