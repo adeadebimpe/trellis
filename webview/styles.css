@@ -1826,11 +1826,12 @@ body[data-host='panel'] .detailPage.projectPage {
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
+  box-sizing: border-box;
   box-shadow: 0 8px 24px var(--shadow);
   display: grid;
   gap: 8px;
   max-width: min(320px, calc(100vw - 48px));
-  min-width: 220px;
+  min-width: min(220px, calc(100vw - 48px));
   padding: 10px;
   position: absolute;
   right: 0;
