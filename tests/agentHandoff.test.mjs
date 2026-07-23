@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 const outfile = '/private/tmp/agent-board-agentHandoff.cjs';
 execFileSync('./node_modules/.bin/esbuild', ['src/agentHandoff.ts', '--bundle', '--platform=node', '--format=cjs', `--outfile=${outfile}`], { stdio: 'inherit' });
 const require = createRequire(import.meta.url);
-const { activeRunBlockReason, isTerminalOwnedHandoff, shouldStartAutomaticQa, terminalStartBlockReason } = require(outfile);
+const { activeRunBlockReason, canRetryMissingBuildTerminal, isTerminalOwnedHandoff, shouldStartAutomaticQa, terminalStartBlockReason } = require(outfile);
 
 assert.equal(shouldStartAutomaticQa('ready-for-qa', 'build', false, undefined, 'v1'), false, 'QA must wait for the build process to exit');
 assert.equal(shouldStartAutomaticQa('ready-for-qa', undefined, false, undefined, 'v1'), true, 'an exited build may hand off');
@@ -25,6 +25,16 @@ assert.match(
   'chat ownership must produce a clear duplicate-run explanation'
 );
 assert.equal(activeRunBlockReason('TASK-001', 'build', undefined), undefined);
+
+const missingBuildTerminal = { claimId: 'c1', phase: 'build', agent: 'codex', surface: 'terminal', startedAt: 'now' };
+assert.equal(canRetryMissingBuildTerminal('building', missingBuildTerminal, false), true);
+assert.equal(canRetryMissingBuildTerminal('building', missingBuildTerminal, true), false, 'a live terminal must not be retried');
+assert.equal(
+  canRetryMissingBuildTerminal('building', { ...missingBuildTerminal, surface: 'chat' }, false),
+  false,
+  'chat runs must not expose terminal recovery'
+);
+assert.equal(canRetryMissingBuildTerminal('ready-for-qa', missingBuildTerminal, false), false, 'only active builds can retry');
 
 assert.match(
   terminalStartBlockReason('TASK-001', 'build', [{ taskId: 'TASK-001', kind: 'build' }]),
