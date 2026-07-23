@@ -9,7 +9,7 @@ import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
-import { buildAgentPermissionAllowlist, codexAutomationArgs } from './agentPermissions';
+import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs } from './agentPermissions';
 import { shouldStartAutomaticQa, terminalStartBlockReason } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
@@ -858,7 +858,13 @@ async function launchAgentTerminal(
   agentTerminals.set(taskId, { terminal, kind, agent });
   diagnostics.appendLine(`[${new Date().toISOString()}] Started ${taskId}: ${kind}, ${agent}.`);
   terminal.show(false);
-  await executeAgentCommand(terminal, taskId, agentLaunchCommand(agent, promptUri.fsPath));
+  await executeAgentCommand(terminal, taskId, agentLaunchCommand(
+    agent,
+    promptUri.fsPath,
+    storage.root.fsPath,
+    worktreePath || storage.root.fsPath,
+    taskId
+  ));
 }
 
 async function executeAgentCommand(terminal: vscode.Terminal, taskId: string, command: string): Promise<void> {
@@ -905,10 +911,19 @@ async function executeAgentCommand(terminal: vscode.Terminal, taskId: string, co
   terminal.sendText(`${command}; exit`);
 }
 
-function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptPath: string): string {
+function agentLaunchCommand(
+  agent: Exclude<AssignedAgent, 'unassigned'>,
+  promptPath: string,
+  mainRoot: string,
+  worktreePath: string,
+  taskId: string
+): string {
   // POSIX shells only; the prompt lives in a file to avoid multi-line sendText quoting issues.
   if (agent === 'claude') {
-    return `claude -p "$(cat ${shellQuote(promptPath)})"`;
+    const enabled = Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY));
+    const managed = activeContext?.workspaceState.get<string[]>(MANAGED_PERMISSIONS_KEY) ?? [];
+    const args = claudeAutomationArgs(enabled, managed, { mainRoot, worktreePath, taskId });
+    return claudeLaunchCommand(promptPath, args);
   }
   const scopedArgs = codexAutomationArgs(Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)));
   return `codex exec --skip-git-repo-check${scopedArgs.length ? ` ${scopedArgs.join(' ')}` : ''} "$(cat ${shellQuote(promptPath)})"`;
