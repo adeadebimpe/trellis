@@ -5,11 +5,16 @@ import { createRequire } from 'node:module';
 const outfile = '/private/tmp/agent-board-permissions.cjs';
 execFileSync('./node_modules/.bin/esbuild', ['src/agentPermissions.ts', '--bundle', '--platform=node', '--format=cjs', `--outfile=${outfile}`], { stdio: 'inherit' });
 const require = createRequire(import.meta.url);
-const { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } = require(outfile);
+const { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } = require(outfile);
 
 assert.deepEqual(codexAutomationArgs(false), []);
 assert.deepEqual(codexAutomationArgs(true), ['--sandbox', 'workspace-write', '--ask-for-approval', 'never']);
 assert.equal(codexAutomationArgs(true).some((entry) => /danger|bypass|full-access/.test(entry)), false);
+const scopedCommand = codexLaunchCommand("/tmp/a prompt's file.md", true);
+assert.ok(scopedCommand.indexOf('--ask-for-approval never') < scopedCommand.indexOf(' exec '), 'global approval policy must precede exec');
+assert.ok(scopedCommand.includes('exec --skip-git-repo-check'));
+assert.ok(scopedCommand.includes("'\\''"), 'prompt path must be POSIX quoted');
+assert.equal(codexLaunchCommand('/tmp/prompt.md', false).includes('--ask-for-approval'), false);
 
 const scope = {
   worktreePath: '/tmp/a worktree',
