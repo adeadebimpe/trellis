@@ -14,6 +14,7 @@ import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, Projec
 import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
 import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
 import { DEFAULT_WORKFLOW_PROMPTS } from './workflowPrompts';
+import { specialistAgentFileName, specialistAgentToml } from './specialists';
 
 const execFileAsync = promisify(execFile);
 
@@ -430,8 +431,32 @@ export class AgentBoardStorage {
       lastUpdated: new Date().toISOString()
     };
     await this.writeJson(this.projectUri(), merged);
+    await this.materializeCodexSpecialists(existing, merged);
     await this.appendRootActivity('vscode', 'Updated project context.');
     return merged;
+  }
+
+  private async materializeCodexSpecialists(previous: ProjectContext, project: ProjectContext): Promise<void> {
+    const directory = vscode.Uri.joinPath(this.root, '.codex', 'agents');
+    await this.ensureDir(directory);
+    const desired = new Set<string>();
+    for (const specialist of project.specialists ?? []) {
+      const name = specialistAgentFileName(specialist);
+      desired.add(name);
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(directory, name), encoder.encode(specialistAgentToml(specialist)));
+    }
+    for (const specialist of previous.specialists ?? []) {
+      const name = specialistAgentFileName(specialist);
+      if (!desired.has(name)) {
+        // Only remove files derived from a definition Trellis previously knew
+        // about. Similar-looking user-owned agent files remain untouched.
+        try {
+          await vscode.workspace.fs.delete(vscode.Uri.joinPath(directory, name));
+        } catch {
+          // The generated file may already have been removed manually.
+        }
+      }
+    }
   }
 
   async inferProjectContext(): Promise<ProjectContext> {
@@ -803,6 +828,7 @@ export class AgentBoardStorage {
       claimGeneration: 0,
       dependsOn: [],
       requiredCapabilities: [],
+      specialistIds: [],
       readyAt: '',
       workflowMode: undefined,
       claimWarning: '',

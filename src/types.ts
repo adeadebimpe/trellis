@@ -16,6 +16,17 @@ export type Priority = 'high' | 'medium' | 'low';
 export type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
 export type WorkflowMode = 'branch-per-task' | 'direct-on-main';
 export type ExecutionSurface = 'chat' | 'terminal';
+export type SpecialistStage = 'before-build' | 'post-build-review' | 'qa';
+export type SpecialistAccessMode = 'read-only' | 'workspace-write';
+
+export interface Specialist {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  accessMode: SpecialistAccessMode;
+  stages: SpecialistStage[];
+}
 
 export interface ActiveRun {
   phase: 'build' | 'qa';
@@ -116,6 +127,7 @@ export interface AgentBoardTask {
   claimGeneration?: number;
   dependsOn?: string[];
   requiredCapabilities?: string[];
+  specialistIds?: string[];
   readyAt?: string;
   worktreeTaskId?: string;
   worktreeBaseSha?: string;
@@ -196,6 +208,7 @@ export interface ProjectContext {
     qa?: string;
     repair?: string;
   };
+  specialists?: Specialist[];
   designRules: string[];
   glossary: string[];
   inference: ProjectInference;
