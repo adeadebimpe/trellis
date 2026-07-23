@@ -7,6 +7,7 @@ import { chooseAgentSignIn, generateClaudeAutomationToken, signInClaudeCode, sig
 import { isSetupComplete } from './onboarding';
 import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
+import { generatedSpecDraftPatch, prdSplitDraftPatch } from './taskDrafts';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
@@ -357,8 +358,6 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           expectedLastUpdated: task.lastUpdated
         });
         await postState();
-        // Chat-created tasks advance to Ready for Agent once the PRD drafts;
-        // the user reviews it in the detail page rather than a Backlog hold.
         await runGenerateSpecAction(context, task.id, withIntake.lastUpdated);
         await postState();
         webview.postMessage({ type: 'intake-created', id: task.id });
@@ -393,16 +392,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
             await storage.saveTask({
               task: {
                 id: task.id,
-                title: seed.title,
-                description: seed.description,
-                acceptanceCriteria: seed.acceptanceCriteria,
-                priority: seed.priority,
-                // The PRD split already yields an implementation-ready spec.
-                status: 'ready-for-agent',
-                activityLog: [
-                  ...(task.activityLog ?? []),
-                  { timestamp: now, actor: 'vscode', message: 'Created from PRD split.' }
-                ]
+                ...prdSplitDraftPatch(seed, task.activityLog ?? [], now)
               },
               expectedLastUpdated: task.lastUpdated
             });
@@ -608,7 +598,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
   }
 }
 
-async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string, advanceBacklog = true): Promise<boolean> {
+async function runGenerateSpecAction(context: vscode.ExtensionContext, id: string, expectedLastUpdated?: string): Promise<boolean> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const task = state.tasks.find((item) => item.id === id);
@@ -661,17 +651,16 @@ async function runGenerateSpecAction(context: vscode.ExtensionContext, id: strin
         const currentTitle = task.title?.trim() ?? '';
         const derivedTitle = deriveTaskTitle({ ...task, title: '' });
         const useAiTitle = Boolean(aiTitle) && (!currentTitle || currentTitle === derivedTitle);
-        const advanceToReady = advanceBacklog && task.status === 'backlog';
         await storage.saveTask({
           task: {
             id,
-            title: useAiTitle ? aiTitle! : currentTitle || derivedTitle,
-            ...specPatch,
-            ...(advanceToReady ? { status: 'ready-for-agent' as const } : {}),
-            activityLog: [
-              ...(task.activityLog ?? []),
-              { timestamp: new Date().toISOString(), actor: provider, message: advanceToReady ? 'Generated PRD. Moved to ready-for-agent.' : 'Generated PRD.' }
-            ]
+            ...generatedSpecDraftPatch(
+              task,
+              specPatch,
+              useAiTitle ? aiTitle! : currentTitle || derivedTitle,
+              provider,
+              new Date().toISOString()
+            )
           },
           expectedLastUpdated
         }, provider);
