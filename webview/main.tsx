@@ -4,6 +4,7 @@ import './styles.css';
 import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
 import { PendingIntake, queueIntake, updateIntake } from './intakeState';
 import { branchNameValidationError, generatedTaskBranchName } from '../src/branchNames';
+import { compareTasksByLatestUpdate } from '../src/taskOrdering';
 
 type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done' | 'merged';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
@@ -860,7 +861,9 @@ function App(): JSX.Element {
 
       <section className="board" aria-label="Trellis columns">
         {boardColumns.map((column) => {
-          const tasks = state?.tasks.filter((task) => task.status === column.id) ?? [];
+          const tasks = state?.tasks
+            .filter((task) => task.status === column.id)
+            .sort(compareTasksByLatestUpdate) ?? [];
           const collapsed = hostMode === 'sidebar' && Boolean(collapsedLanes[column.id]);
           const qaWaiting = column.id === 'ready-for-qa';
           const laneTitle = qaWaiting ? 'QA Waiting' : column.title;
