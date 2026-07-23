@@ -901,6 +901,9 @@ function App(): JSX.Element {
               <div className="cards">
                 {tasks.map((task) => {
                   const activeRun = state?.activeRuns?.[task.id];
+                  const workflowIsLive = generatingIds.includes(task.id)
+                    || activeRun?.surface === 'chat'
+                    || Boolean(state?.liveTerminals?.includes(task.id));
                   return (
                   <button
                     className={`card status-${task.status}`}
@@ -939,7 +942,7 @@ function App(): JSX.Element {
                       </span>
                       {workflowPercent[task.status] < 100 ? (
                         <span
-                          className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
+                          className={`workflowProgress${workflowIsLive ? ' workflowProgressLive' : ''}`}
                           title={`${workflowPercent[task.status]}% through the Trellis workflow`}
                           aria-label={`${workflowPercent[task.status]} percent workflow progress`}
                           style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
