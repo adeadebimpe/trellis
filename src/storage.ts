@@ -15,6 +15,7 @@ import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgent
 import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
 import { DEFAULT_WORKFLOW_PROMPTS } from './workflowPrompts';
 import { specialistAgentFileName, specialistAgentToml } from './specialists';
+import { branchNameValidationError } from './branchNames';
 
 const execFileAsync = promisify(execFile);
 
@@ -340,6 +341,9 @@ export class AgentBoardStorage {
     if (request.task.status) {
       assertStatusChangeAllowed(existing, request.task.status);
     }
+    if (Object.prototype.hasOwnProperty.call(request.task, 'customBranchName')) {
+      await this.assertCustomBranchNameAllowed(existing, String(request.task.customBranchName ?? ''));
+    }
 
     const now = new Date().toISOString();
     const incomingLog = Array.isArray(request.task.activityLog) ? request.task.activityLog : undefined;
@@ -359,6 +363,40 @@ export class AgentBoardStorage {
 
     await this.writeJson(uri, merged);
     return merged;
+  }
+
+  private async assertCustomBranchNameAllowed(existing: AgentBoardTask, customBranchName: string): Promise<void> {
+    const previous = String(existing.customBranchName ?? '');
+    if (customBranchName === previous) return;
+    if (
+      existing.status !== 'backlog'
+      || Boolean(existing.branchName || existing.worktreePath || existing.claimedAt || existing.claimedBy || existing.activeRun)
+    ) {
+      throw new Error('The branch name is locked because work has already begun or the task has left Backlog.');
+    }
+    const formatError = branchNameValidationError(customBranchName);
+    if (formatError) throw new Error(formatError);
+    if (!customBranchName) return;
+    try {
+      await execFileAsync('git', ['check-ref-format', '--branch', customBranchName], { cwd: this.root.fsPath });
+    } catch {
+      throw new Error(`“${customBranchName}” is not a valid Git branch name.`);
+    }
+    try {
+      await execFileAsync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${customBranchName}`], { cwd: this.root.fsPath });
+      throw new Error(`A local branch named “${customBranchName}” already exists. Choose another name.`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('already exists')) throw error;
+    }
+    const tasks = (await this.loadBoardState()).tasks;
+    const conflict = tasks.find((task) =>
+      task.id !== existing.id
+      && task.status !== 'merged'
+      && (task.customBranchName === customBranchName || task.branchName === customBranchName)
+    );
+    if (conflict) {
+      throw new Error(`“${customBranchName}” is already reserved by ${conflict.id}. Choose another name or finish that task first.`);
+    }
   }
 
   private withTaskLock<T>(key: string, owner: string, fn: () => Promise<T>): Promise<T> {
@@ -821,6 +859,7 @@ export class AgentBoardStorage {
       comments: [],
       claimedBy: '',
       qaClaimedBy: '',
+      customBranchName: '',
       branchName: '',
       worktreePath: '',
       claimedAt: '',
@@ -882,6 +921,7 @@ export class AgentBoardStorage {
       qaEvidence: Array.isArray(task.qaEvidence) ? task.qaEvidence : [],
       claimedBy: task.claimedBy ?? '',
       qaClaimedBy: task.qaClaimedBy ?? '',
+      customBranchName: task.customBranchName ?? '',
       branchName: task.branchName ?? '',
       worktreePath: task.worktreePath ?? '',
       claimedAt: task.claimedAt ?? '',

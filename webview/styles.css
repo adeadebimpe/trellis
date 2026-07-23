@@ -1686,6 +1686,39 @@ body[data-host='panel'] .detailPage.projectPage {
   margin-bottom: 16px;
 }
 
+.branchField {
+  margin: -4px 0 18px;
+}
+
+.branchField input {
+  font-family: var(--mono-font);
+  width: 100%;
+}
+
+.branchField input[readonly] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.branchField .inputInvalid {
+  border-color: var(--red);
+}
+
+.fieldHelp,
+.fieldError {
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.fieldHelp {
+  color: var(--subtle);
+}
+
+.fieldError {
+  color: var(--red);
+}
+
 .propRow {
   align-items: center;
   display: flex;
