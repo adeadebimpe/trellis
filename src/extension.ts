@@ -482,6 +482,34 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await postState();
         break;
       }
+      case 'add-comment': {
+        const comment = String(message.comment ?? '').trim();
+        if (!comment) {
+          throw new Error('Write a comment before sending.');
+        }
+        const current = findTask((await storage.loadBoardState()).tasks, message.id);
+        if (current.status !== 'done') {
+          throw new Error('This comment action is only available for done tasks.');
+        }
+        const now = new Date().toISOString();
+        await storage.saveTask({
+          task: {
+            id: current.id,
+            comments: [
+              ...(current.comments ?? []),
+              { id: `${current.id}-${Date.now()}`, author: 'human', phase: 'done', message: comment, createdAt: now }
+            ],
+            activityLog: [
+              ...(current.activityLog ?? []),
+              { timestamp: now, actor: 'human', message: `Comment on done task: ${comment}` }
+            ]
+          },
+          expectedLastUpdated: message.expectedLastUpdated
+        });
+        webview.postMessage({ type: 'comment-saved', id: current.id });
+        await postState();
+        break;
+      }
       case 'delete-task':
         await storage.deleteTask(message.id);
         webview.postMessage({ type: 'task-deleted', id: message.id });
