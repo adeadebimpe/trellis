@@ -20,6 +20,10 @@ export function terminalStartBlockReason(
   return undefined;
 }
 
+export function canReuseBuildTerminalForQa(taskId: string, registered: RegisteredTerminal[]): boolean {
+  return registered.some((entry) => entry.taskId === taskId && entry.kind === 'build');
+}
+
 export interface TerminalOwnership {
   claimId: string;
   phase: Exclude<RegisteredAgentKind, undefined>;
