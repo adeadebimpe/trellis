@@ -511,6 +511,52 @@ h1 {
   outline: none;
 }
 
+.attachmentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachmentChip {
+  align-items: center;
+  background: var(--badge-bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-family: var(--mono-font);
+  font-size: 10px;
+  gap: 5px;
+  max-width: min(220px, 100%);
+  padding: 4px 5px 4px 9px;
+}
+
+.attachmentChip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentChip button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--subtle);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.attachmentChip button:hover {
+  color: var(--text);
+}
+
+.attachmentChip svg {
+  height: 12px;
+  width: 12px;
+}
+
 .chatControls {
   align-items: center;
   display: flex;
@@ -540,6 +586,12 @@ h1 {
 
 .chatIconBtn:hover {
   color: var(--text);
+}
+
+.chatIconBtn:disabled {
+  color: var(--subtle);
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .agentSelect {
@@ -868,36 +920,30 @@ select:focus-visible {
   color: var(--subtle);
 }
 
-.emptyBoard {
-  align-items: center;
-  display: flex;
-  flex: 1;
-  justify-content: center;
-  padding: 48px 24px;
-}
-
-.emptyBoard div {
-  max-width: 420px;
-  text-align: center;
-}
-
-.emptyBoard h2 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-
-.emptyBoard p {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.6;
-  margin: 0 0 18px;
-}
-
 .cards {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.laneStart {
+  align-items: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--subtle);
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  gap: 10px;
+  justify-content: center;
+  min-height: 92px;
+  padding: 14px;
+  text-align: center;
+}
+
+.laneStart .primary {
+  font-size: 11px;
+  padding: 6px 10px;
 }
 
 /* Task card — dot + mono id | prio icon + label, title, agent chip | claim. */

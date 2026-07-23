@@ -207,6 +207,7 @@ function App(): JSX.Element {
   const [createMode, setCreateMode] = useState<'quick' | 'prd' | 'bug'>('quick');
   const [createText, setCreateText] = useState('');
   const [createAgent, setCreateAgent] = useState<AssignedAgent>('unassigned');
+  const [intakeFiles, setIntakeFiles] = useState<Array<{ name: string; path: string }>>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [prdSplitting, setPrdSplitting] = useState(false);
@@ -345,6 +346,18 @@ function App(): JSX.Element {
       if (event.data.type === 'workspace-files') {
         setWorkspaceFiles(Array.isArray(event.data.files) ? event.data.files : []);
       }
+      if (event.data.type === 'intake-files-selected') {
+        const files = Array.isArray(event.data.files) ? event.data.files : [];
+        setIntakeFiles((current) => {
+          const byPath = new Map(current.map((file) => [file.path, file]));
+          for (const file of files) {
+            if (file && typeof file.name === 'string' && typeof file.path === 'string') {
+              byPath.set(file.path, { name: file.name, path: file.path });
+            }
+          }
+          return [...byPath.values()];
+        });
+      }
       if (event.data.type === 'prd-split-started') {
         setPrdSplitting(true);
       }
@@ -356,6 +369,7 @@ function App(): JSX.Element {
         // Tasks are on the board; leave the create screen if it is still open.
         setCreateBusy(null);
         setCreateText('');
+        setIntakeFiles([]);
         setCreateOpen(false);
       }
       if (event.data.type === 'intake-created') {
@@ -363,6 +377,7 @@ function App(): JSX.Element {
         if (createOpen) {
           // The user waited on the create screen: take them to the drafted task.
           setCreateText('');
+          setIntakeFiles([]);
           setCreateOpen(false);
           setSelectedId(event.data.id);
         } else {
@@ -462,6 +477,7 @@ function App(): JSX.Element {
   const openCreate = () => {
     setCreateMode('quick');
     setCreateText('');
+    setIntakeFiles([]);
     setMentionQuery(null);
     setCreateAgent(state?.settings.autoAssignAgent ?? 'unassigned');
     setCreateOpen(true);
@@ -485,7 +501,11 @@ function App(): JSX.Element {
         type: 'create-intake',
         agent: createAgent,
         mentions,
-        intake: { text, intent: createMode === 'bug' ? 'investigate' : 'single-task', attachmentPaths: [] }
+        intake: {
+          text,
+          intent: createMode === 'bug' ? 'investigate' : 'single-task',
+          attachmentPaths: intakeFiles.map((file) => file.path)
+        }
       });
     }
     // Stay on the create screen until the draft lands; the back arrow can
@@ -554,7 +574,9 @@ function App(): JSX.Element {
   };
 
   const boardColumns = state?.board.columns.filter((column) =>
-    column.id !== 'ready-for-qa' || state.tasks.some((task) => task.status === 'ready-for-qa')
+    state.tasks.length === 0
+    || column.id !== 'ready-for-qa'
+    || state.tasks.some((task) => task.status === 'ready-for-qa')
   ) ?? [];
 
   if (state && (!state.settings.agentPermissions.decisionMade || permissionsOpen)) {
@@ -694,15 +716,6 @@ function App(): JSX.Element {
         </div>
       </header>
 
-      {state && state.tasks.length === 0 ? (
-        <section className="emptyBoard">
-          <div>
-            <h2>No tasks yet</h2>
-            <p>Describe what you want built. Trellis drafts the PRD, assigns an agent, and queues it on the board.</p>
-            <button className="primary" onClick={openCreate}>New task</button>
-          </div>
-        </section>
-      ) : (
       <section className="board" aria-label="Trellis columns">
         {boardColumns.map((column) => {
           const tasks = state?.tasks.filter((task) => task.status === column.id) ?? [];
@@ -790,13 +803,18 @@ function App(): JSX.Element {
                     </span>
                   </button>
                 ))}
+                {state?.tasks.length === 0 && column.id === boardColumns[0]?.id && (
+                  <div className="laneStart">
+                    <span>Start the workflow here</span>
+                    <button className="primary" onClick={openCreate}>New task</button>
+                  </div>
+                )}
               </div>
               )}
             </div>
           );
         })}
       </section>
-      )}
 
       </>
       )}
@@ -853,6 +871,23 @@ function App(): JSX.Element {
                 </div>
               </>
             )}
+            {intakeFiles.length > 0 && (
+              <div className="attachmentChips" aria-label="Selected attachments">
+                {intakeFiles.map((file) => (
+                  <span className="attachmentChip" key={file.path} title={file.path}>
+                    <span>{file.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.name}`}
+                      title={`Remove ${file.name}`}
+                      onClick={() => setIntakeFiles((current) => current.filter((item) => item.path !== file.path))}
+                    >
+                      <XIcon />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <textarea
               rows={1}
               className="chatInput"
@@ -897,9 +932,10 @@ function App(): JSX.Element {
               <div className="chatLeft">
                 <button
                   className="chatIconBtn"
-                  aria-label="Attach file context"
-                  title="Attach file context"
-                  onClick={() => setMentionQuery((open) => (open === null ? '' : null))}
+                  aria-label="Attach image, Markdown, or text file"
+                  title="Attach image, Markdown, or text file"
+                  disabled={createMode === 'prd'}
+                  onClick={() => vscode.postMessage({ type: 'select-intake-files' })}
                 >
                   <PlusIcon />
                 </button>

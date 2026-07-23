@@ -257,8 +257,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           openLabel: 'Attach to intake',
           title: 'Choose screenshots, images, PRDs, or supporting files',
           filters: {
-            'Supported files': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'md', 'txt', 'log'],
-            'All files': ['*']
+            'Images, Markdown, and text': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'md', 'txt']
           }
         });
         webview.postMessage({
@@ -293,14 +292,20 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments: [], intent, createdAt: now }
         });
         const paths = Array.isArray(message.intake?.attachmentPaths)
-          ? message.intake.attachmentPaths.map(String).filter(Boolean)
+          ? Array.from(new Set<string>(
+            message.intake.attachmentPaths
+              .map(String)
+              .filter((path: string) => /\.(?:png|jpe?g|gif|webp|md|txt)$/i.test(path))
+          ))
           : [];
         const copied = await storage.copyIntakeAttachments(task.id, paths);
         // @mentioned workspace files ride along as intake attachments so the PRD
         // prompt treats them as user-provided evidence (never fabricated content).
         const attachments = [
           ...copied,
-          ...mentions.map((path) => ({ name: path.split('/').pop() ?? path, path, mediaType: 'text/x-workspace-file', size: 0 }))
+          ...mentions
+            .filter((path) => !paths.includes(path))
+            .map((path) => ({ name: path.split('/').pop() ?? path, path, mediaType: 'text/x-workspace-file', size: 0 }))
         ];
         const withIntake = await storage.saveTask({
           task: {
