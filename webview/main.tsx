@@ -889,9 +889,16 @@ function App(): JSX.Element {
               <div className="cards">
                 {tasks.map((task) => {
                   const activeRun = state?.activeRuns?.[task.id];
-                  const workflowIsLive = generatingIds.includes(task.id)
-                    || activeRun?.surface === 'chat'
-                    || Boolean(state?.liveTerminals?.includes(task.id));
+                  const activityPhase = task.status === 'building'
+                    ? 'build'
+                    : task.status === 'qa-running'
+                      ? 'qa'
+                      : undefined;
+                  const workflowIsLive = Boolean(
+                    activeRun
+                    && activeRun.phase === activityPhase
+                    && (activeRun.surface === 'chat' || state?.liveTerminals?.includes(task.id))
+                  );
                   return (
                   <button
                     className={`card status-${task.status}`}
@@ -933,7 +940,7 @@ function App(): JSX.Element {
                         title={statusHints[task.status]}
                         aria-label={`Workflow status: ${statusLabels[task.status]}`}
                       >
-                        <i aria-hidden="true" />
+                        {workflowIsLive && <i aria-hidden="true" />}
                         <span>{statusLabels[task.status]}</span>
                       </span>
                     </span>
