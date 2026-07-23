@@ -9,6 +9,15 @@ const { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand
 
 assert.deepEqual(codexAutomationArgs(false), []);
 assert.deepEqual(codexAutomationArgs(true), ['--sandbox', 'workspace-write', '--ask-for-approval', 'never']);
+assert.deepEqual(codexAutomationArgs(true, {
+  mainRoot: '/repo',
+  worktreePath: '/repo/.agent-board/worktrees/TASK-001',
+  taskId: 'TASK-001'
+}), [
+  '--sandbox', 'workspace-write', '--ask-for-approval', 'never',
+  '--add-dir', '/repo/.agent-board/tasks',
+  '--add-dir', '/repo/.agent-board/locks'
+]);
 assert.equal(codexAutomationArgs(true).some((entry) => /danger|bypass|full-access/.test(entry)), false);
 const scopedCommand = codexLaunchCommand("/tmp/a prompt's file.md", true);
 assert.ok(scopedCommand.indexOf('--ask-for-approval never') < scopedCommand.indexOf(' exec '), 'global approval policy must precede exec');

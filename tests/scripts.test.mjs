@@ -118,7 +118,7 @@ git(repo, ['add', '-A']);
 git(repo, ['commit', '-q', '-m', 'fixture']);
 
 // Claim creates a worktree and writes state to the main checkout only.
-let result = runScript(repo, 'claim-task.mjs', ['TASK-001', 'claude']);
+let result = runScript(repo, 'claim-task.mjs', ['TASK-001', 'claude', 'chat']);
 assert.equal(result.status, 0, result.stderr);
 const claimOutput = JSON.parse(result.stdout);
 const task1 = readTask(repo, 'TASK-001');
@@ -126,6 +126,9 @@ assert.equal(task1.status, 'building');
 assert.equal(task1.claimedBy, 'claude');
 assert.ok(task1.claimedAt);
 assert.ok(task1.claimId);
+assert.equal(task1.activeRun.surface, 'chat');
+assert.equal(task1.activeRun.phase, 'build');
+assert.equal(task1.activeRun.claimId, task1.claimId);
 assert.equal(task1.worktreePath, join(repo, '.agent-board', 'worktrees', 'TASK-001'));
 assert.equal(claimOutput.worktreePath, task1.worktreePath);
 assert.ok(existsSync(task1.worktreePath));
@@ -174,14 +177,21 @@ writeFileSync(join(task1.worktreePath, 'README.md'), 'fixture\n');
 result = runScript(repo, 'complete-task.mjs', ['TASK-001']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-001').status, 'ready-for-qa');
+assert.equal(readTask(repo, 'TASK-001').activeRun.surface, 'chat', 'QA should inherit a chat-owned build surface');
 
 // pass-qa refuses outside qa-running.
 result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
 assert.equal(result.status, 2, 'pass-qa must refuse before start-qa');
 
+result = runScript(repo, 'start-qa.mjs', ['TASK-001', 'codex', 'terminal']);
+assert.equal(result.status, 3, 'chat-owned builds must not silently switch QA to a terminal');
+assert.match(result.stderr, /QA is reserved for chat/);
+
 result = runScript(repo, 'start-qa.mjs', ['TASK-001', 'codex']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-001').status, 'qa-running');
+assert.equal(readTask(repo, 'TASK-001').activeRun.surface, 'chat');
+assert.equal(readTask(repo, 'TASK-001').activeRun.phase, 'qa');
 
 result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
 assert.equal(result.status, 4, 'QA must not reuse build validation');
@@ -190,6 +200,7 @@ assert.equal(result.status, 0, result.stderr);
 result = runScript(repo, 'pass-qa.mjs', ['TASK-001', 'looks good']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-001').status, 'done');
+assert.equal(readTask(repo, 'TASK-001').activeRun, undefined);
 
 // TASK-002: empty evidence, then failing validation.
 result = runScript(repo, 'start-qa.mjs', ['TASK-002', 'claude']);
@@ -235,6 +246,7 @@ result = runScript(repo, 'claim-next-task.mjs', ['claude']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(JSON.parse(result.stdout).task.id, 'TASK-004');
 assert.equal(readTask(repo, 'TASK-004').status, 'building');
+assert.equal(readTask(repo, 'TASK-004').activeRun.surface, 'chat', 'script claims default to chat to avoid a surprise terminal');
 assert.equal(readTask(repo, 'TASK-005').status, 'ready-for-agent');
 
 writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-005.json'), JSON.stringify({ ...readTask(repo, 'TASK-005'), status: 'backlog' }, null, 2));

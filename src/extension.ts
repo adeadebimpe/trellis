@@ -180,8 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const [taskId, entry] = match;
       agentTerminals.delete(taskId);
       diagnostics.appendLine(`[${new Date().toISOString()}] ${taskId} command ended (exit ${event.exitCode ?? 'unknown'}).`);
-      void handleAgentTerminalClosed(taskId, entry.kind);
-      scheduleRefresh();
+      void handleAgentTerminalEnded(taskId, entry.kind, event.exitCode);
     }));
   }
 
@@ -191,6 +190,10 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promise<void> {
+  await handleAgentTerminalEnded(taskId, kind, undefined);
+}
+
+async function handleAgentTerminalEnded(taskId: string, kind: AgentKind, exitCode: number | undefined): Promise<void> {
   try {
     const storage = await resolveStorage();
     const state = await storage.loadBoardState();
@@ -198,25 +201,40 @@ async function handleAgentTerminalClosed(taskId: string, kind: AgentKind): Promi
     if (!task) {
       return;
     }
-    const interrupted = (kind === 'build' && task.status === 'building') || (kind === 'qa' && task.status === 'qa-running');
+    if (kind === 'build' && exitCode === 0 && task.status === 'ready-for-qa') {
+      await markTerminalOwnershipComplete(taskId, task.claimId, 'build');
+      scheduleRefresh();
+      return;
+    }
+    if (kind === 'qa' && exitCode === 0 && task.status === 'failed-qa') {
+      await markTerminalOwnershipComplete(taskId, task.qaClaimId, 'qa');
+      scheduleRefresh();
+      return;
+    }
+    const interrupted = (kind === 'build' && (task.status === 'building' || task.status === 'ready-for-qa'))
+      || (kind === 'qa' && task.status === 'qa-running');
     if (!interrupted) {
+      await clearTerminalOwnership(taskId);
+      scheduleRefresh();
       return;
     }
     const now = new Date().toISOString();
+    const exitDescription = exitCode === undefined ? 'closed unexpectedly' : `exited with code ${exitCode}`;
     await storage.saveTask({
       task: {
         id: taskId,
         status: 'human-review',
         activityLog: [
           ...(task.activityLog ?? []),
-          { timestamp: now, actor: 'vscode', message: `Agent terminal closed while task was ${task.status}. Moved to human-review for follow-up.` }
+          { timestamp: now, actor: 'vscode', message: `Agent terminal ${exitDescription} while task was ${task.status}. Moved to human-review for follow-up.` }
         ]
       }
     });
-    vscode.window.showWarningMessage(`Agent terminal for ${taskId} closed while it was ${task.status}. The task was moved to Human Review.`);
+    await clearTerminalOwnership(taskId);
+    vscode.window.showWarningMessage(`Agent terminal for ${taskId} ${exitDescription} while it was ${task.status}. The task was moved to Human Review.`);
     await postState();
   } catch (error) {
-    console.error('Trellis: failed to handle closed agent terminal', error);
+    console.error('Trellis: failed to handle ended agent terminal', error);
   }
 }
 
@@ -560,6 +578,12 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         await postState();
         break;
       }
+      case 'set-auto-continue': {
+        const enabled = Boolean(message.enabled);
+        await vscode.workspace.getConfiguration('agentBoard').update('autoContinue', enabled, vscode.ConfigurationTarget.Workspace);
+        await postState();
+        break;
+      }
       case 'open-full-board':
         await openBoard(context);
         break;
@@ -708,7 +732,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   }
 
   await ensureAgentCliAvailable(agent);
-  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent]);
+  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', id, agent, 'terminal']);
   const claimed = findTask((await storage.loadBoardState()).tasks, id);
   if (claimed.claimWarning) {
     vscode.window.showWarningMessage(claimed.claimWarning);
@@ -741,7 +765,7 @@ async function runStartQaAction(id: string): Promise<void> {
   }
 
   await ensureAgentCliAvailable(agent);
-  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent]);
+  await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent, 'terminal']);
   const started = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
   await setTerminalOwnership(id, started.qaClaimId, 'qa');
@@ -818,7 +842,18 @@ async function setTerminalOwnership(taskId: string, claimId: string | undefined,
   if (!activeContext || !claimId) return;
   await activeContext.workspaceState.update(TERMINAL_OWNERSHIP_KEY, {
     ...terminalOwnership(),
-    [taskId]: { claimId, phase }
+    [taskId]: { claimId, phase, completedSuccessfully: false }
+  });
+}
+
+async function markTerminalOwnershipComplete(taskId: string, claimId: string | undefined, phase: AgentKind): Promise<void> {
+  if (!activeContext || !claimId) return;
+  const ownership = terminalOwnership();
+  const current = ownership[taskId];
+  if (current?.claimId !== claimId || current.phase !== phase) return;
+  await activeContext.workspaceState.update(TERMINAL_OWNERSHIP_KEY, {
+    ...ownership,
+    [taskId]: { ...current, completedSuccessfully: true }
   });
 }
 
@@ -964,7 +999,11 @@ function agentLaunchCommand(
     const args = claudeAutomationArgs(enabled, managed, { mainRoot, worktreePath, taskId });
     return claudeLaunchCommand(promptPath, args);
   }
-  return codexLaunchCommand(promptPath, Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)));
+  return codexLaunchCommand(
+    promptPath,
+    Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)),
+    { mainRoot, worktreePath, taskId }
+  );
 }
 
 function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
@@ -979,7 +1018,7 @@ function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: s
     `Read ${mainRoot}/.agent-board/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
     'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
     `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent}. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
+    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
     'If blocked, update the task with a blocker note and move it to human-review.'
   ].join('\n');
 }
@@ -1013,7 +1052,7 @@ function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, b
     `Also read ${mainRoot}/.agent-board/project.json before editing.`,
     'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
     `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent} and continue any returned task until it prints {"noTask":true}.`,
+    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal and continue any returned task until it prints {"noTask":true}.`,
     'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
   ].join('\n');
 }
@@ -1077,7 +1116,7 @@ async function refreshBoard(): Promise<void> {
 
 async function startReadyBuildTasks(): Promise<void> {
   if (!vscode.workspace.getConfiguration('agentBoard').get<boolean>('autoContinue', true)) return;
-  if ([...agentTerminals.values()].some((entry) => entry.kind === 'build') || autoBuildStarting.size) return;
+  if ([...agentTerminals.values()].some((entry) => entry.kind === 'build') || autoBuildStarting.size || autoRepairStarting.size) return;
   const storage = await resolveStorage();
   const { tasks } = await storage.loadBoardState();
   const rank = { high: 0, medium: 1, low: 2 } as const;
@@ -1133,53 +1172,55 @@ async function startReadyQaTasks(): Promise<void> {
 }
 
 async function startFailedQaRepairs(): Promise<void> {
+  if ([...agentTerminals.values()].some((entry) => entry.kind === 'build') || autoBuildStarting.size || autoRepairStarting.size) return;
   const storage = await resolveStorage();
   const { tasks } = await storage.loadBoardState();
   const ownership = terminalOwnership();
-  const failed = tasks.filter((task) =>
-    task.status === 'failed-qa'
-    && isTerminalOwnedHandoff(ownership[task.id], task.qaClaimId, 'qa')
-    && agentTerminals.get(task.id)?.kind !== 'build'
-    && !autoRepairStarting.has(task.id)
-    && autoRepairAttemptedVersions.get(task.id) !== task.lastUpdated
-  );
+  const rank = { high: 0, medium: 1, low: 2 } as const;
+  const task = tasks
+    .filter((candidate) =>
+      candidate.status === 'failed-qa'
+      && isTerminalOwnedHandoff(ownership[candidate.id], candidate.qaClaimId, 'qa')
+      && agentTerminals.get(candidate.id)?.kind !== 'build'
+      && autoRepairAttemptedVersions.get(candidate.id) !== candidate.lastUpdated
+    )
+    .sort((a, b) => rank[a.priority] - rank[b.priority] || a.id.localeCompare(b.id))[0];
+  if (!task) return;
 
-  await Promise.all(failed.map(async (task) => {
-    autoRepairStarting.add(task.id);
-    autoRepairAttemptedVersions.set(task.id, task.lastUpdated);
+  autoRepairStarting.add(task.id);
+  autoRepairAttemptedVersions.set(task.id, task.lastUpdated);
+  try {
+    const agent = requireAgent(task.assignedAgent, 'Assign a Codex or Claude build agent before automatic repair can start.');
+    await ensureAgentCliAvailable(agent);
+    const now = new Date().toISOString();
+    await storage.saveTask({
+      task: {
+        id: task.id,
+        status: 'ready-for-agent',
+        activityLog: [
+          ...(task.activityLog ?? []),
+          { timestamp: now, actor: 'vscode', message: 'QA failed. Returned to building and started an automatic repair.' }
+        ]
+      },
+      expectedLastUpdated: task.lastUpdated
+    });
+    await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', task.id, agent, 'terminal']);
+    const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
+    const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
+    await setTerminalOwnership(task.id, repairing.claimId, 'build');
     try {
-      const agent = requireAgent(task.assignedAgent, 'Assign a Codex or Claude build agent before automatic repair can start.');
-      await ensureAgentCliAvailable(agent);
-      const now = new Date().toISOString();
-      await storage.saveTask({
-        task: {
-          id: task.id,
-          status: 'ready-for-agent',
-          activityLog: [
-            ...(task.activityLog ?? []),
-            { timestamp: now, actor: 'vscode', message: 'QA failed. Returned to building and started an automatic repair.' }
-          ]
-        },
-        expectedLastUpdated: task.lastUpdated
-      });
-      await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', task.id, agent]);
-      const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
-      const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
-      await setTerminalOwnership(task.id, repairing.claimId, 'build');
-      try {
-        await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
-      } catch (error) {
-        await clearTerminalOwnership(task.id);
-        throw error;
-      }
-      vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
+      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Automatic QA repair could not start for ${task.id}. ${message}`);
-    } finally {
-      autoRepairStarting.delete(task.id);
+      await clearTerminalOwnership(task.id);
+      throw error;
     }
-  }));
+    vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Automatic QA repair could not start for ${task.id}. ${message}`);
+  } finally {
+    autoRepairStarting.delete(task.id);
+  }
 }
 
 async function pruneTerminalOwnership(): Promise<void> {
@@ -1215,6 +1256,9 @@ async function postState(): Promise<void> {
     state: {
       ...state,
       liveTerminals: [...agentTerminals.keys()],
+      activeRuns: Object.fromEntries(state.tasks
+        .filter((task) => task.activeRun)
+        .map((task) => [task.id, task.activeRun])),
       generatingIds: [...generatingSpecs],
       settings: {
         specProvider: provider,
@@ -1228,6 +1272,7 @@ async function postState(): Promise<void> {
         agentPermissions: {
           allowlist: permissionAllowlist,
           codexMode: codexAutomationArgs(true).join(' '),
+          autoContinue: vscode.workspace.getConfiguration('agentBoard').get<boolean>('autoContinue', true),
           enabled: permissionStatus.enabled,
           decisionMade: permissionStatus.enabled || Boolean(activeContext?.workspaceState.get<boolean>(PERMISSION_DECISION_KEY))
         }

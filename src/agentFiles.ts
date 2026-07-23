@@ -20,14 +20,14 @@ Agents should follow this workflow:
 
 1. List \`.agent-board/tasks/\` to see all tasks and read \`.agent-board/project.json\` for project overview, coding rules, agent rules, validation commands, design rules, glossary, and inferred stack context.
 2. Find tasks with status \`ready-for-agent\`. Prefer tasks where \`assignedAgent\` is \`codex\` or \`unassigned\`.
-3. Claim work with \`node .agent-board/scripts/claim-next-task.mjs codex\` (or \`claim-task.mjs TASK-ID codex\`). The script follows project.json \`workflowMode\`: it either creates a task worktree or explicitly selects the main checkout.
+3. Claim work with \`node .agent-board/scripts/claim-next-task.mjs codex chat\` (or \`claim-task.mjs TASK-ID codex chat\`). The \`chat\` surface prevents Trellis from also launching a terminal for the task. If another run owns it, do not duplicate the work; report the existing phase, agent, and surface.
 4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
 5. Read the task JSON printed by the claim script. Implement only that task.
 6. Update \`agentNotes\`, \`relevantFiles\`, and append clear entries to \`activityLog\` in the main checkout's task file as work progresses.
 7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
 8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\`. This runs the task or project validation commands in the worktree and records evidence on the task. It is required: \`complete-task\` refuses without a passing validation run.
 9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
-10. QA agents claim ready QA work with \`node .agent-board/scripts/start-qa.mjs TASK-ID codex\` (or \`claude\`), review acceptance criteria and changed files in the worktree, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`. Passing QA requires the task to be \`qa-running\`, non-empty \`qaEvidence\`, and a passing validation run.
+10. If the build was claimed in chat, continue QA in chat with \`node .agent-board/scripts/start-qa.mjs TASK-ID codex chat\`; never start a duplicate terminal. Review acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`.
 11. If blocked, add a blocker note, append an activity entry, and set \`status\` to \`human-review\`.
 
 Preserve unknown fields in Trellis JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.
@@ -43,16 +43,16 @@ Use Trellis when asked to continue project work in this repository.
 
 1. List \`.agent-board/tasks/\` and read \`.agent-board/project.json\` for project overview, rules, validation commands, design rules, glossary, and inferred repo context.
 2. Pick the highest-priority task with status \`ready-for-agent\` assigned to \`claude\` or \`unassigned\`.
-3. Claim it with \`node .agent-board/scripts/claim-next-task.mjs claude\` (or \`claim-task.mjs TASK-ID claude\`). The script follows project.json \`workflowMode\`: it either creates a task worktree or explicitly selects the main checkout.
+3. Claim it with \`node .agent-board/scripts/claim-next-task.mjs claude chat\` (or \`claim-task.mjs TASK-ID claude chat\`). The \`chat\` surface prevents Trellis from launching a duplicate terminal. If another run owns the task, return to that session.
 4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
 5. Build according to the project context, task description, acceptance criteria, constraints, and QA checklist.
 6. Update \`relevantFiles\`, \`agentNotes\`, and append concise \`activityLog\` entries in the main checkout's task file as work progresses.
 7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
 8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\` — it runs the validation commands in the worktree and records evidence. \`complete-task\` refuses without a passing validation run.
 9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
-10. If acting as QA agent, claim ready QA work with \`node .agent-board/scripts/start-qa.mjs TASK-ID claude\`, check acceptance criteria, QA checklist, design QA checklist, and changed files in the worktree, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "reason"\`.
+10. Continue chat-owned builds into QA with \`node .agent-board/scripts/start-qa.mjs TASK-ID claude chat\`. Check acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "reason"\`.
 11. Move the task to \`human-review\` if blocked or uncertain.
-12. After completing a task, run \`node .agent-board/scripts/claim-next-task.mjs claude\`. Continue in the returned worktree and repeat until it prints \`{"noTask":true}\`.
+12. After completing a task, run \`node .agent-board/scripts/claim-next-task.mjs claude chat\`. Continue in the returned worktree and repeat until it prints \`{"noTask":true}\`.
 
 The main checkout's \`.agent-board/\` folder is the source of truth. Preserve unknown fields; the scripts lock tasks while writing, so prefer them over manual JSON edits.
 `;
@@ -383,9 +383,9 @@ import { join } from 'node:path';
 import { assertDirectModeAvailable, assertTaskId, effectivePriority, ensureWorktree, fail, leaseExpired, leaseExpiry, newClaimId, projectWorkflowMode, readJson, resolveMainRoot, runScript, taskEligibility, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
-  const agent = process.argv[2];
-  if (!agent || !['claude', 'codex'].includes(agent)) {
-    throw fail(1, 'Usage: node .agent-board/scripts/claim-next-task.mjs claude|codex');
+  const [agent, surface = 'chat'] = process.argv.slice(2);
+  if (!agent || !['claude', 'codex'].includes(agent) || !['chat', 'terminal'].includes(surface)) {
+    throw fail(1, 'Usage: node .agent-board/scripts/claim-next-task.mjs claude|codex chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
@@ -431,6 +431,7 @@ await runScript(async () => {
       task.assignedAgent = agent;
       task.claimedBy = agent;
       task.claimId = newClaimId();
+      task.activeRun = { phase: 'build', agent, surface, claimId: task.claimId, startedAt: now };
       task.claimGeneration = Number(task.claimGeneration || 0) + 1;
       task.leaseExpiresAt = leaseExpiry();
       task.worktreeTaskId = task.id;
@@ -442,7 +443,7 @@ await runScript(async () => {
       task.claimedAt = now;
       task.lastUpdated = now;
       task.activityLog = Array.isArray(task.activityLog) ? task.activityLog : [];
-      task.activityLog.push({ timestamp: now, actor: agent, message: worktree.message });
+      task.activityLog.push({ timestamp: now, actor: agent, message: worktree.message + ' Running Build in ' + surface + '.' });
       await writeJson(path, task);
       return task;
     });
@@ -473,9 +474,9 @@ import { join } from 'node:path';
 import { assertDirectModeAvailable, ensureWorktree, fail, leaseExpired, leaseExpiry, newClaimId, projectWorkflowMode, readJson, resolveMainRoot, runScript, taskEligibility, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
-  const [taskId, agent] = process.argv.slice(2);
-  if (!taskId || !agent || !['claude', 'codex'].includes(agent)) {
-    throw fail(1, 'Usage: node .agent-board/scripts/claim-task.mjs TASK-001 claude|codex');
+  const [taskId, agent, surface = 'chat'] = process.argv.slice(2);
+  if (!taskId || !agent || !['claude', 'codex'].includes(agent) || !['chat', 'terminal'].includes(surface)) {
+    throw fail(1, 'Usage: node .agent-board/scripts/claim-task.mjs TASK-001 claude|codex chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
@@ -495,7 +496,9 @@ await runScript(async () => {
   const task = await withTaskLock(mainRoot, claimMode === 'direct-on-main' ? '_board' : taskId, agent, async () => {
     const current = await readJson(path);
     if (current.status !== 'ready-for-agent' && !leaseExpired(current)) {
-      throw fail(2, 'Task must be ready-for-agent before build can start.');
+      const run = current.activeRun;
+      const detail = run ? ' Active ' + run.phase + ' is already running with ' + run.agent + ' in ' + run.surface + '.' : '';
+      throw fail(2, 'Task must be ready-for-agent before build can start.' + detail);
     }
     const blocked = taskEligibility(current, tasks, project, agent);
     if (blocked) throw fail(5, 'Task is not eligible: ' + blocked + '.');
@@ -509,6 +512,7 @@ await runScript(async () => {
     current.assignedAgent = agent;
     current.claimedBy = agent;
     current.claimId = newClaimId();
+    current.activeRun = { phase: 'build', agent, surface, claimId: current.claimId, startedAt: now };
     current.claimGeneration = Number(current.claimGeneration || 0) + 1;
     current.leaseExpiresAt = leaseExpiry();
     current.worktreeTaskId = current.id;
@@ -520,7 +524,7 @@ await runScript(async () => {
     current.claimedAt = now;
     current.lastUpdated = now;
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
-    current.activityLog.push({ timestamp: now, actor: agent, message: worktree.message });
+    current.activityLog.push({ timestamp: now, actor: agent, message: worktree.message + ' Running Build in ' + surface + '.' });
     await writeJson(path, current);
     return current;
   });
@@ -601,9 +605,9 @@ export function startQaScript(): string {
 import { assertDirectModeAvailable, ensureWorktree, fail, newClaimId, readJson, resolveMainRoot, runScript, taskPath, withTaskLock, writeJson } from './_lib.mjs';
 
 await runScript(async () => {
-  const [taskId, agent = 'qa'] = process.argv.slice(2);
-  if (!taskId) {
-    throw fail(1, 'Usage: node .agent-board/scripts/start-qa.mjs TASK-001 codex|claude');
+  const [taskId, agent = 'qa', requestedSurface] = process.argv.slice(2);
+  if (!taskId || !['claude', 'codex'].includes(agent)) {
+    throw fail(1, 'Usage: node .agent-board/scripts/start-qa.mjs TASK-001 codex|claude chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
@@ -615,11 +619,18 @@ await runScript(async () => {
       throw fail(2, 'Task must be ready-for-qa or failed-qa before QA can start.');
     }
     const now = new Date().toISOString();
+    const inheritedSurface = current.activeRun?.surface;
+    if (requestedSurface && inheritedSurface && requestedSurface !== inheritedSurface) {
+      throw fail(3, 'QA is reserved for ' + inheritedSurface + ' because Build ran there. Resume that session instead of starting QA in ' + requestedSurface + '.');
+    }
+    const surface = requestedSurface || inheritedSurface || 'chat';
+    if (!['chat', 'terminal'].includes(surface)) throw fail(1, 'QA surface must be chat or terminal.');
     if (current.workflowMode === 'direct-on-main') await assertDirectModeAvailable(mainRoot, current.id);
     const worktree = ensureWorktree(mainRoot, current, current.workflowMode);
     current.status = 'qa-running';
     current.qaClaimedBy = agent;
     current.qaClaimId = newClaimId();
+    current.activeRun = { phase: 'qa', agent, surface, claimId: current.qaClaimId, startedAt: now };
     current.qaStartedAt = now;
     current.qaAgent = current.qaAgent && current.qaAgent !== 'unassigned' ? current.qaAgent : (['claude', 'codex'].includes(agent) ? agent : 'unassigned');
     current.branchName = worktree.branchName;
@@ -627,7 +638,7 @@ await runScript(async () => {
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.activityLog = Array.isArray(current.activityLog) ? current.activityLog : [];
-    current.activityLog.push({ timestamp: now, actor: agent, message: 'Started QA. ' + worktree.message });
+    current.activityLog.push({ timestamp: now, actor: agent, message: 'Started QA in ' + surface + '. ' + worktree.message });
     await writeJson(path, current);
     return current;
   });
@@ -803,6 +814,7 @@ await runScript(async () => {
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
     current.status = 'done';
+    delete current.activeRun;
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.qaNotes.push({ timestamp: now, actor, message: note });
@@ -842,6 +854,7 @@ await runScript(async () => {
     const now = new Date().toISOString();
     const actor = current.qaClaimedBy || current.qaAgent || 'qa';
     current.status = 'failed-qa';
+    delete current.activeRun;
     current.lastUpdated = now;
     current.qaNotes = Array.isArray(current.qaNotes) ? current.qaNotes : [];
     current.qaNotes.push({ timestamp: now, actor, claimId: current.qaClaimId, message: reason });

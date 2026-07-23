@@ -15,6 +15,15 @@ export type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 export type Priority = 'high' | 'medium' | 'low';
 export type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
 export type WorkflowMode = 'branch-per-task' | 'direct-on-main';
+export type ExecutionSurface = 'chat' | 'terminal';
+
+export interface ActiveRun {
+  phase: 'build' | 'qa';
+  agent: Exclude<AssignedAgent, 'unassigned'>;
+  surface: ExecutionSurface;
+  claimId: string;
+  startedAt: string;
+}
 
 export interface IntakeAttachment {
   name: string;
@@ -113,6 +122,7 @@ export interface AgentBoardTask {
   claimId?: string;
   qaClaimId?: string;
   qaStartedAt?: string;
+  activeRun?: ActiveRun;
   lastValidation: ValidationRun | null;
   shipResult: ShipResult | null;
   intake?: TaskIntake;

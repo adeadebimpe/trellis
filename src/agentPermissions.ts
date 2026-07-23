@@ -11,16 +11,22 @@ export const STANDARD_AGENT_PERMISSIONS = [
 
 export const CODEX_SCOPED_AUTOMATION_ARGS = ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'] as const;
 
-export function codexAutomationArgs(enabled: boolean): string[] {
-  return enabled ? [...CODEX_SCOPED_AUTOMATION_ARGS] : [];
+export function codexAutomationArgs(enabled: boolean, scope?: ClaudeAutomationScope): string[] {
+  if (!enabled) return [];
+  const args: string[] = [...CODEX_SCOPED_AUTOMATION_ARGS];
+  if (scope) {
+    const boardRoot = `${scope.mainRoot.replace(/\/+$/, '')}/.agent-board`;
+    args.push('--add-dir', `${boardRoot}/tasks`, '--add-dir', `${boardRoot}/locks`);
+  }
+  return args;
 }
 
 function posixQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export function codexLaunchCommand(promptPath: string, scopedAutomation: boolean): string {
-  const globalArgs = codexAutomationArgs(scopedAutomation);
+export function codexLaunchCommand(promptPath: string, scopedAutomation: boolean, scope?: ClaudeAutomationScope): string {
+  const globalArgs = codexAutomationArgs(scopedAutomation, scope);
   return `codex${globalArgs.length ? ` ${globalArgs.join(' ')}` : ''} exec --skip-git-repo-check "$(cat ${posixQuote(promptPath)})"`;
 }
 

@@ -1,4 +1,5 @@
 export type RegisteredAgentKind = 'build' | 'qa' | undefined;
+export type ExecutionSurface = 'chat' | 'terminal';
 
 export interface RegisteredTerminal {
   taskId: string;
@@ -22,6 +23,26 @@ export function terminalStartBlockReason(
 export interface TerminalOwnership {
   claimId: string;
   phase: Exclude<RegisteredAgentKind, undefined>;
+  completedSuccessfully?: boolean;
+}
+
+export interface ActiveRun {
+  claimId: string;
+  phase: Exclude<RegisteredAgentKind, undefined>;
+  agent: 'codex' | 'claude';
+  surface: ExecutionSurface;
+  startedAt: string;
+}
+
+export function activeRunBlockReason(
+  taskId: string,
+  requestedPhase: Exclude<RegisteredAgentKind, undefined>,
+  run: ActiveRun | undefined
+): string | undefined {
+  if (!run) return undefined;
+  const phase = run.phase === 'qa' ? 'QA' : 'Build';
+  const surface = run.surface === 'chat' ? 'chat' : 'a Trellis terminal';
+  return `${taskId} already has ${phase} running with ${run.agent} in ${surface}. Return to that session instead of starting another ${requestedPhase}.`;
 }
 
 export function isTerminalOwnedHandoff(
@@ -31,7 +52,8 @@ export function isTerminalOwnedHandoff(
 ): boolean {
   return Boolean(claimId)
     && ownership?.claimId === claimId
-    && ownership?.phase === phase;
+    && ownership?.phase === phase
+    && ownership.completedSuccessfully === true;
 }
 
 export function shouldStartAutomaticQa(
@@ -42,7 +64,7 @@ export function shouldStartAutomaticQa(
   currentVersion: string
 ): boolean {
   return status === 'ready-for-qa'
-    && registeredKind !== 'qa'
+    && registeredKind === undefined
     && !starting
     && attemptedVersion !== currentVersion;
 }

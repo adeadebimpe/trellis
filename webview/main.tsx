@@ -117,6 +117,13 @@ interface BoardState {
   tasks: Task[];
   project: ProjectContext;
   liveTerminals: string[];
+  activeRuns: Record<string, {
+    phase: 'build' | 'qa';
+    agent: Exclude<AssignedAgent, 'unassigned'>;
+    surface: 'chat' | 'terminal';
+    claimId: string;
+    startedAt: string;
+  }>;
   generatingIds: string[];
   settings: {
     specProvider?: string;
@@ -126,6 +133,7 @@ interface BoardState {
     agentPermissions: {
       allowlist: string[];
       codexMode: string;
+      autoContinue: boolean;
       enabled: boolean;
       decisionMade: boolean;
     };
@@ -664,6 +672,18 @@ function App(): JSX.Element {
             <ul className="permissionList">
               {permissions.allowlist.map((entry) => <li key={entry}><code>{entry}</code></li>)}
             </ul>
+            <label className="automationToggle">
+              <span>
+                <strong>Automatically start the next task</strong>
+                <small>Trellis opens a terminal only when no chat or terminal run already owns that task.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={permissions.autoContinue}
+                onChange={(event) => vscode.postMessage({ type: 'set-auto-continue', enabled: event.target.checked })}
+              />
+              <i aria-hidden="true" />
+            </label>
             <div className="setupActions">
               {permissions.enabled ? (
                 <button className="danger" onClick={() => {
@@ -832,7 +852,9 @@ function App(): JSX.Element {
               </div>
               {!collapsed && (
               <div className="cards">
-                {tasks.map((task) => (
+                {tasks.map((task) => {
+                  const activeRun = state?.activeRuns?.[task.id];
+                  return (
                   <button
                     className={`card status-${task.status}`}
                     draggable
@@ -857,8 +879,16 @@ function App(): JSX.Element {
                     <span className="cardTitle" title={task.title || 'Untitled task'}>{task.title || 'Untitled task'}</span>
                     <span className="cardBottom">
                       <span className="phaseTags">
-                        <span className={`phaseTag agent-${task.assignedAgent}`}><b>Build</b>{task.assignedAgent}</span>
-                        <span className={`phaseTag agent-${task.qaAgent}`}><b>QA</b>{task.qaAgent}</span>
+                        {activeRun ? (
+                          <span className={`phaseTag agent-${activeRun.agent}`}>
+                            <b>{activeRun.phase === 'qa' ? 'QA' : 'Build'}</b>{activeRun.agent} · {activeRun.surface === 'chat' ? 'Chat' : 'Terminal'}
+                          </span>
+                        ) : (
+                          <>
+                            <span className={`phaseTag agent-${task.assignedAgent}`}><b>Build</b>{task.assignedAgent}</span>
+                            <span className={`phaseTag agent-${task.qaAgent}`}><b>QA</b>{task.qaAgent}</span>
+                          </>
+                        )}
                       </span>
                       <span
                         className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
@@ -871,7 +901,8 @@ function App(): JSX.Element {
                       </span>
                     </span>
                   </button>
-                ))}
+                  );
+                })}
                 {state?.tasks.length === 0 && column.id === boardColumns[0]?.id && (
                   <div className="laneStart">
                     <span>Start the workflow here</span>
@@ -1218,17 +1249,22 @@ function App(): JSX.Element {
             {draft.status === 'qa-running' && (
               <p className="automationHint">QA is running and will record pass or fail automatically.</p>
             )}
-            {state?.liveTerminals?.includes(draft.id) && (
+            {state?.activeRuns?.[draft.id] && (() => {
+              const run = state.activeRuns[draft.id];
+              const isTerminal = run.surface === 'terminal';
+              const awaitingChatQa = run.surface === 'chat' && draft.status === 'ready-for-qa';
+              return (
               <div className="terminalBanner" role="status">
-                <span className="terminalBannerSpin" aria-hidden="true"><LoaderPinwheelIcon /></span>
+                {!awaitingChatQa && <span className="terminalBannerSpin" aria-hidden="true"><LoaderPinwheelIcon /></span>}
                 <span className="terminalBannerText">
-                  {draft.status === 'qa-running'
-                    ? `${draft.qaClaimedBy || draft.qaAgent} is running QA in a terminal.`
-                    : `${draft.claimedBy || draft.assignedAgent} is working in a terminal.`}
+                  {awaitingChatQa
+                    ? `Build finished in ${run.agent} chat. QA is reserved for that chat; no terminal will start.`
+                    : `${run.agent} is running ${run.phase === 'qa' ? 'QA' : 'Build'} in ${isTerminal ? 'a Trellis terminal' : 'chat'}. Another session will not be started.`}
                 </span>
-                <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>
+                {isTerminal && <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>}
               </div>
-            )}
+              );
+            })()}
             {(draft.status === 'done' || draft.status === 'human-review') && (
               <Action label={draft.workflowMode === 'direct-on-main' ? 'Mark complete' : 'Ship (PR / merge)'} onClick={() => vscode.postMessage({ type: 'ship-task', id: draft.id, expectedLastUpdated: lastKnownUpdatedRef.current })} primary />
             )}

@@ -260,6 +260,78 @@ select {
   overflow-wrap: anywhere;
 }
 
+.automationToggle {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 5%, var(--background));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  margin: 0 0 20px;
+  padding: 12px;
+  position: relative;
+}
+
+.automationToggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.automationToggle strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.automationToggle small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.automationToggle input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.automationToggle > i {
+  background: var(--line);
+  border-radius: 999px;
+  height: 18px;
+  position: relative;
+  transition: background 140ms ease;
+  width: 34px;
+}
+
+.automationToggle > i::after {
+  background: var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 35%, transparent);
+  content: '';
+  height: 14px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: transform 140ms ease;
+  width: 14px;
+}
+
+.automationToggle input:checked + i {
+  background: var(--accent);
+}
+
+.automationToggle input:checked + i::after {
+  transform: translateX(16px);
+}
+
+.automationToggle:focus-within {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Header — 48px surface bar: logo tile + wordmark left, icon actions right. */
 .topbar {
   align-items: center;
