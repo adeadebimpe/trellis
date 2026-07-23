@@ -6,6 +6,19 @@ export const SPECIALIST_STAGES: Array<{ id: SpecialistStage; label: string }> = 
   { id: 'qa', label: 'QA' }
 ];
 
+export function specialistValidationErrors(specialist: Specialist): Partial<Record<'name' | 'description' | 'instructions' | 'stages', string>> {
+  const errors: Partial<Record<'name' | 'description' | 'instructions' | 'stages', string>> = {};
+  if (!specialist.name.trim()) errors.name = 'Enter a name.';
+  if (!specialist.description.trim()) errors.description = 'Enter a description.';
+  if (!specialist.instructions.trim()) errors.instructions = 'Enter instructions.';
+  if (!specialist.stages.length) errors.stages = 'Select at least one workflow stage.';
+  return errors;
+}
+
+export function isValidSpecialist(specialist: Specialist): boolean {
+  return Object.keys(specialistValidationErrors(specialist)).length === 0;
+}
+
 export function specialistsForStage(project: Pick<ProjectContext, 'specialists'>, task: Pick<AgentBoardTask, 'specialistIds'>, stage: SpecialistStage): Specialist[] {
   const byId = new Map((project.specialists ?? []).map((specialist) => [specialist.id, specialist]));
   return (task.specialistIds ?? []).map((id) => byId.get(id))

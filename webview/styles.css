@@ -2222,6 +2222,14 @@ input.textInput {
 .specialistCard legend { margin-bottom: 6px; }
 .specialistCard fieldset label { display: flex; gap: 5px; }
 .dangerText { color: var(--vscode-errorForeground); border: 0; background: transparent; cursor: pointer; }
+.specialistCard > label { font-size: 12px; font-weight: 600; margin-bottom: -6px; }
+.specialistCard .fieldError { color: var(--vscode-errorForeground); font-size: 12px; margin-top: -6px; }
+.specialistCard [aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); }
+
+@media (max-width: 420px) {
+  .specialistManagerHeader { align-items: stretch; flex-direction: column; }
+  .specialistManagerHeader button { justify-content: center; }
+}
 
 .workflowPromptIntro h3 {
   font-size: 15px;
