@@ -32,6 +32,8 @@ Install at least one supported agent CLI and sign in through its official flow:
 
 Run **Trellis: Sign In to Agent CLI** to open the selected CLI's own authentication command in a VS Code terminal. Trellis does not capture or store Codex or Claude OAuth tokens.
 
+Trellis runs build tasks sequentially across a workspace: with automatic continuation enabled, the next ready task starts after the active build command ends. QA and isolated worktree activity may run concurrently, but duplicate runs for the same task are blocked. Use **Trellis: Show Agent Terminal Diagnostics** to list active Trellis terminals by task, agent, and phase. Diagnostics are event-driven and do not continuously sample resources; use your operating system's activity monitor for process-level CPU and memory figures.
+
 ## Spec generation
 
 Trellis can generate task specifications with Codex CLI, Claude Code, or the OpenAI API. Generated specifications can include acceptance criteria, QA and design checks, validation commands, implementation constraints, and relevant source files.

@@ -1,5 +1,24 @@
 export type RegisteredAgentKind = 'build' | 'qa' | undefined;
 
+export interface RegisteredTerminal {
+  taskId: string;
+  kind: Exclude<RegisteredAgentKind, undefined>;
+}
+
+export function terminalStartBlockReason(
+  taskId: string,
+  kind: Exclude<RegisteredAgentKind, undefined>,
+  registered: RegisteredTerminal[]
+): string | undefined {
+  if (registered.some((entry) => entry.taskId === taskId)) {
+    return `${taskId} already has an active Trellis terminal. Use Show terminal to return to it.`;
+  }
+  if (kind === 'build' && registered.some((entry) => entry.kind === 'build')) {
+    return 'Another build is already running. Trellis runs builds one at a time and will start the next ready task when it finishes.';
+  }
+  return undefined;
+}
+
 export function shouldStartAutomaticQa(
   status: string,
   registeredKind: RegisteredAgentKind,

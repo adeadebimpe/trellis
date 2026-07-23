@@ -1085,7 +1085,7 @@ function App(): JSX.Element {
               <p className="automationHint">
                 {(draft.qaNotes ?? []).length
                   ? 'The build agent is repairing the latest QA feedback. QA will run again automatically.'
-                  : 'QA starts automatically after the build agent validates and completes this task.'}
+                  : 'Builds run one at a time. QA starts automatically after this agent validates and completes the task; isolated QA work may run concurrently.'}
               </p>
             )}
             {draft.status === 'ready-for-qa' && (

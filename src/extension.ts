@@ -10,7 +10,7 @@ import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, codexAutomationArgs } from './agentPermissions';
-import { shouldStartAutomaticQa } from './agentHandoff';
+import { shouldStartAutomaticQa, terminalStartBlockReason } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -24,8 +24,9 @@ const SCOPED_AUTOMATION_KEY = 'agentBoard.scopedAutomationEnabled';
 const execFileAsync = promisify(execFile);
 
 type AgentKind = 'build' | 'qa';
-const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind }>();
-const TERMINAL_NAME_PATTERN = /^(?:Trellis|Agent Board): (\S+) (build|qa) /;
+const agentTerminals = new Map<string, { terminal: vscode.Terminal; kind: AgentKind; agent: CliAgent }>();
+const TERMINAL_NAME_PATTERN = /^(?:Trellis|Agent Board): (\S+) (build|qa) \((Claude Code|Codex)\)$/;
+const diagnostics = vscode.window.createOutputChannel('Trellis Diagnostics');
 const autoQaStarting = new Set<string>();
 const autoQaAttemptedVersions = new Map<string, string>();
 const autoRepairStarting = new Set<string>();
@@ -85,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('agentBoard.signInCodex', () => signInCodexCli()),
     vscode.commands.registerCommand('agentBoard.signInClaude', () => signInClaudeCode()),
     vscode.commands.registerCommand('agentBoard.setupClaudeToken', () => generateClaudeAutomationToken()),
+    vscode.commands.registerCommand('agentBoard.showDiagnostics', () => showTerminalDiagnostics()),
     vscode.commands.registerCommand('agentBoard.freshStart', () => freshStart(context)),
     vscode.commands.registerCommand('agentBoard.prepareAgentFiles', async () => {
       const storage = await resolveStorage();
@@ -134,7 +136,11 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const terminal of vscode.window.terminals) {
     const match = TERMINAL_NAME_PATTERN.exec(terminal.name);
     if (match) {
-      agentTerminals.set(match[1], { terminal, kind: match[2] as AgentKind });
+      agentTerminals.set(match[1], {
+        terminal,
+        kind: match[2] as AgentKind,
+        agent: match[3] === 'Claude Code' ? 'claude' : 'codex'
+      });
     }
   }
 
@@ -149,6 +155,23 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+  // Shell execution events are lifecycle-driven and avoid resource-heavy polling.
+  // This API is feature-detected so Trellis still runs on older supported VS Code builds.
+  const terminalWindow = vscode.window as typeof vscode.window & {
+    onDidEndTerminalShellExecution?: (
+      listener: (event: { terminal: vscode.Terminal; exitCode: number | undefined }) => unknown
+    ) => vscode.Disposable;
+  };
+  if (terminalWindow.onDidEndTerminalShellExecution) {
+    context.subscriptions.push(terminalWindow.onDidEndTerminalShellExecution((event) => {
+      const match = [...agentTerminals].find(([, entry]) => entry.terminal === event.terminal);
+      if (!match) return;
+      const [taskId] = match;
+      agentTerminals.delete(taskId);
+      diagnostics.appendLine(`[${new Date().toISOString()}] ${taskId} command ended (exit ${event.exitCode ?? 'unknown'}).`);
+      scheduleRefresh();
+    }));
+  }
 
   // Resume the automatic handoff for tasks that became QA-ready while the
   // extension host was stopped. Existing QA terminals are reclaimed above.
@@ -521,15 +544,22 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           // the terminal itself survived; re-adopt it by name before giving up.
           const found = vscode.window.terminals.find((terminal) => TERMINAL_NAME_PATTERN.exec(terminal.name)?.[1] === message.id);
           if (found) {
-            const kind = (TERMINAL_NAME_PATTERN.exec(found.name)?.[2] ?? 'build') as AgentKind;
-            entry = { terminal: found, kind };
+            const match = TERMINAL_NAME_PATTERN.exec(found.name);
+            const kind = (match?.[2] ?? 'build') as AgentKind;
+            const agent: CliAgent = match?.[3] === 'Claude Code' ? 'claude' : 'codex';
+            entry = { terminal: found, kind, agent };
             agentTerminals.set(message.id, entry);
           }
         }
         if (entry) {
           entry.terminal.show(false);
         } else {
-          vscode.window.showInformationMessage(`No live agent terminal for ${message.id}. Check the terminal panel for a "Trellis: ${message.id}" entry.`);
+          vscode.window.showErrorMessage(
+            `Trellis could not find a live terminal for ${message.id}. The run may have finished or the terminal was closed.`,
+            'Open diagnostics'
+          ).then((choice) => {
+            if (choice === 'Open diagnostics') showTerminalDiagnostics();
+          });
           await postState();
         }
         break;
@@ -645,6 +675,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   const state = await storage.loadBoardState();
   const task = findTask(state.tasks, id);
   const agent = requireAgent(task.assignedAgent, 'Assign Codex or Claude before starting build.');
+  assertTerminalCanStart(id, 'build');
 
   if (task.status !== 'ready-for-agent') {
     throw new Error('Move the task to Ready for Agent before starting build.');
@@ -671,6 +702,7 @@ async function runStartQaAction(id: string): Promise<void> {
   const state = await storage.loadBoardState();
   const task = findTask(state.tasks, id);
   const agent = requireAgent(task.qaAgent, 'Assign a Codex or Claude QA agent before starting QA.');
+  assertTerminalCanStart(id, 'qa');
 
   if (task.status !== 'ready-for-qa' && task.status !== 'failed-qa') {
     throw new Error('Move the task to Ready for QA before starting QA.');
@@ -712,6 +744,32 @@ function requireAgent(agent: AssignedAgent, message: string): Exclude<AssignedAg
     return agent;
   }
   throw new Error(message);
+}
+
+function assertTerminalCanStart(taskId: string, kind: AgentKind): void {
+  const reason = terminalStartBlockReason(
+    taskId,
+    kind,
+    [...agentTerminals].map(([registeredTaskId, entry]) => ({ taskId: registeredTaskId, kind: entry.kind }))
+  );
+  if (reason) throw new Error(reason);
+}
+
+function showTerminalDiagnostics(): void {
+  diagnostics.clear();
+  diagnostics.appendLine('Trellis terminal diagnostics');
+  diagnostics.appendLine('Build tasks run sequentially. QA and isolated worktree activity may run concurrently.');
+  diagnostics.appendLine('Trellis uses terminal lifecycle events; it does not continuously poll CPU or memory.');
+  diagnostics.appendLine('For process-level CPU or memory figures, use your operating system activity monitor.');
+  if (!agentTerminals.size) {
+    diagnostics.appendLine('Active Trellis terminals: none');
+  } else {
+    diagnostics.appendLine(`Active Trellis terminals: ${agentTerminals.size}`);
+    for (const [taskId, entry] of agentTerminals) {
+      diagnostics.appendLine(`- ${taskId}: ${entry.kind}, ${entry.agent}, terminal "${entry.terminal.name}"`);
+    }
+  }
+  diagnostics.show(true);
 }
 
 async function ensureAgentCliAvailable(agent: Exclude<AssignedAgent, 'unassigned'>): Promise<void> {
@@ -772,19 +830,15 @@ async function launchAgentTerminal(
   const promptUri = vscode.Uri.joinPath(storage.boardDir, 'prompts', `${taskId}-${kind}.md`);
   await vscode.workspace.fs.writeFile(promptUri, new TextEncoder().encode(prompt));
 
-  const previous = agentTerminals.get(taskId);
-  if (previous) {
-    // Deregister first so onDidCloseTerminal does not treat this as an interrupted run.
-    agentTerminals.delete(taskId);
-    previous.terminal.dispose();
-  }
+  assertTerminalCanStart(taskId, kind);
 
   const terminal = vscode.window.createTerminal({
     name: `Trellis: ${taskId} ${kind} (${agentLabel(agent)})`,
     cwd: await resolveTerminalCwd(storage, worktreePath, branchName)
   });
-  agentTerminals.set(taskId, { terminal, kind });
-  terminal.show();
+  agentTerminals.set(taskId, { terminal, kind, agent });
+  diagnostics.appendLine(`[${new Date().toISOString()}] Started ${taskId}: ${kind}, ${agent}.`);
+  terminal.show(false);
   terminal.sendText(agentLaunchCommand(agent, promptUri.fsPath));
 }
 
