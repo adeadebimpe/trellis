@@ -227,9 +227,10 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         break;
       case 'create-task': {
         const brief = String(message.brief ?? '').trim();
-        const autoAgent = await pickAutoAgent();
+        const autoAgent = await resolveRequestedAgent(message.agent);
+        const autoQaAgent = await resolveRequestedAgent(message.qaAgent);
         const task = await storage.createTask(brief
-          ? { brief, assignedAgent: autoAgent, qaAgent: autoAgent }
+          ? { brief, assignedAgent: autoAgent, qaAgent: autoQaAgent }
           : undefined);
         await postState();
         if (brief) {
@@ -282,6 +283,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         const allowedIntents = new Set(['single-task', 'decompose', 'define', 'investigate']);
         const intent = allowedIntents.has(message.intake?.intent) ? message.intake.intent : 'single-task';
         const autoAgent = await resolveRequestedAgent(message.agent);
+        const autoQaAgent = await resolveRequestedAgent(message.qaAgent);
         const now = new Date().toISOString();
         const mentions: string[] = Array.isArray(message.mentions)
           ? Array.from(new Set<string>((message.mentions as unknown[]).map((entry) => String(entry).trim()).filter(Boolean))).slice(0, 20)
@@ -289,7 +291,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
         const task = await storage.createTask({
           brief: text,
           assignedAgent: autoAgent,
-          qaAgent: autoAgent,
+          qaAgent: autoQaAgent,
           intake: { method: 'manual', text, sourceUrl: sourceUrl || undefined, attachments: [], intent, createdAt: now }
         });
         const paths = Array.isArray(message.intake?.attachmentPaths)
@@ -338,6 +340,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           throw new Error('Paste a PRD before generating tasks.');
         }
         const agent = await resolveRequestedAgent(message.agent);
+        const qaAgent = await resolveRequestedAgent(message.qaAgent);
         webview.postMessage({ type: 'prd-split-started' });
         try {
           const seeds = await generateTasksFromPrd(context, prd, storage.root.fsPath);
@@ -346,7 +349,7 @@ async function handleWebviewMessage(context: vscode.ExtensionContext, webview: v
           }
           const now = new Date().toISOString();
           for (const seed of seeds) {
-            const task = await storage.createTask({ brief: seed.brief, assignedAgent: agent, qaAgent: agent });
+            const task = await storage.createTask({ brief: seed.brief, assignedAgent: agent, qaAgent });
             await storage.saveTask({
               task: {
                 id: task.id,

@@ -207,6 +207,7 @@ function App(): JSX.Element {
   const [createMode, setCreateMode] = useState<'quick' | 'prd' | 'bug'>('quick');
   const [createText, setCreateText] = useState('');
   const [createAgent, setCreateAgent] = useState<AssignedAgent>('unassigned');
+  const [createQaAgent, setCreateQaAgent] = useState<AssignedAgent>('unassigned');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [prdSplitting, setPrdSplitting] = useState(false);
@@ -464,6 +465,7 @@ function App(): JSX.Element {
     setCreateText('');
     setMentionQuery(null);
     setCreateAgent(state?.settings.autoAssignAgent ?? 'unassigned');
+    setCreateQaAgent(state?.settings.autoAssignAgent ?? 'unassigned');
     setCreateOpen(true);
     vscode.postMessage({ type: 'workspace-files' });
   };
@@ -475,7 +477,7 @@ function App(): JSX.Element {
     }
     if (createMode === 'prd') {
       setCreateBusy('prd');
-      vscode.postMessage({ type: 'create-from-prd', prd: text, agent: createAgent });
+      vscode.postMessage({ type: 'create-from-prd', prd: text, agent: createAgent, qaAgent: createQaAgent });
     } else {
       setCreateBusy('task');
       const mentions = Array.from(new Set(
@@ -484,6 +486,7 @@ function App(): JSX.Element {
       vscode.postMessage({
         type: 'create-intake',
         agent: createAgent,
+        qaAgent: createQaAgent,
         mentions,
         intake: { text, intent: createMode === 'bug' ? 'investigate' : 'single-task', attachmentPaths: [] }
       });
@@ -784,7 +787,7 @@ function App(): JSX.Element {
                         aria-label={`${workflowPercent[task.status]} percent workflow progress`}
                         style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
                       >
-                        <i aria-hidden="true"><LoaderPinwheelIcon /></i>
+                        {workflowPercent[task.status] < 100 && <i aria-hidden="true"><LoaderPinwheelIcon /></i>}
                         <span>{workflowPercent[task.status]}%</span>
                       </span>
                     </span>
@@ -905,10 +908,23 @@ function App(): JSX.Element {
                 </button>
                 <span className="agentSelect">
                   <span className="propDisplay" aria-hidden="true">
+                    <b>Build</b>
                     <span>{createAgent}</span>
                     <span className="propChevron"><ChevronDownIcon /></span>
                   </span>
-                  <select className="propSelect" aria-label="Agent" value={createAgent} onChange={(event) => setCreateAgent(event.target.value as AssignedAgent)}>
+                  <select className="propSelect" aria-label="Build agent" value={createAgent} onChange={(event) => setCreateAgent(event.target.value as AssignedAgent)}>
+                    <option value="claude">claude</option>
+                    <option value="codex">codex</option>
+                    <option value="unassigned">unassigned</option>
+                  </select>
+                </span>
+                <span className="agentSelect">
+                  <span className="propDisplay" aria-hidden="true">
+                    <b>QA</b>
+                    <span>{createQaAgent}</span>
+                    <span className="propChevron"><ChevronDownIcon /></span>
+                  </span>
+                  <select className="propSelect" aria-label="QA agent" value={createQaAgent} onChange={(event) => setCreateQaAgent(event.target.value as AssignedAgent)}>
                     <option value="claude">claude</option>
                     <option value="codex">codex</option>
                     <option value="unassigned">unassigned</option>
