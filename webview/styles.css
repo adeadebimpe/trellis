@@ -1274,21 +1274,14 @@ body.vscode-light .card:hover {
 
 .workflowProgress i {
   align-items: center;
-  background: conic-gradient(var(--status-color) var(--workflow-progress), var(--line) 0);
+  border: 2px solid var(--line);
   border-radius: 50%;
+  border-top-color: var(--status-color);
+  box-sizing: border-box;
   display: inline-flex;
   height: 16px;
   justify-content: center;
-  position: relative;
   width: 16px;
-}
-
-.workflowProgress i::after {
-  background: var(--card);
-  border-radius: 50%;
-  content: '';
-  inset: 3px;
-  position: absolute;
 }
 
 .workflowProgress svg {

@@ -185,18 +185,6 @@ const statusHints: Record<TaskStatus, string> = {
   merged: 'Shipped code'
 };
 
-const workflowPercent: Record<TaskStatus, number> = {
-  backlog: 0,
-  'ready-for-agent': 10,
-  building: 45,
-  'ready-for-qa': 70,
-  'qa-running': 85,
-  'failed-qa': 70,
-  'human-review': 95,
-  done: 100,
-  merged: 100
-};
-
 function App(): JSX.Element {
   const [state, setState] = useState<BoardState | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -940,19 +928,14 @@ function App(): JSX.Element {
                           </>
                         )}
                       </span>
-                      {workflowPercent[task.status] < 100 ? (
-                        <span
-                          className={`workflowProgress${workflowIsLive ? ' workflowProgressLive' : ''}`}
-                          title={`${workflowPercent[task.status]}% through the Trellis workflow`}
-                          aria-label={`${workflowPercent[task.status]} percent workflow progress`}
-                          style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
-                        >
-                          <i aria-hidden="true" />
-                          <span>{workflowPercent[task.status]}%</span>
-                        </span>
-                      ) : (
-                        <span className="screenReaderOnly">{statusLabels[task.status]} task, workflow complete</span>
-                      )}
+                      <span
+                        className={`workflowProgress${workflowIsLive ? ' workflowProgressLive' : ''}`}
+                        title={statusHints[task.status]}
+                        aria-label={`Workflow status: ${statusLabels[task.status]}`}
+                      >
+                        <i aria-hidden="true" />
+                        <span>{statusLabels[task.status]}</span>
+                      </span>
                     </span>
                   </button>
                   );
