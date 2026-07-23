@@ -1317,6 +1317,7 @@ function App(): JSX.Element {
             {state?.activeRuns?.[draft.id] && (() => {
               const run = state.activeRuns[draft.id];
               const isTerminal = run.surface === 'terminal';
+              const hasLiveTerminal = isTerminal && state.liveTerminals.includes(draft.id);
               const awaitingChatQa = run.surface === 'chat' && draft.status === 'ready-for-qa';
               return (
               <div className="terminalBanner" role="status">
@@ -1326,7 +1327,7 @@ function App(): JSX.Element {
                     ? `Build finished in ${run.agent} chat. QA is reserved for that chat; no terminal will start.`
                     : `${run.agent} is running ${run.phase === 'qa' ? 'QA' : 'Build'} in ${isTerminal ? 'a Trellis terminal' : 'chat'}. Another session will not be started.`}
                 </span>
-                {isTerminal && <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>}
+                {hasLiveTerminal && <button className="ghost" onClick={() => vscode.postMessage({ type: 'show-terminal', id: draft.id })}>Show terminal</button>}
               </div>
               );
             })()}
