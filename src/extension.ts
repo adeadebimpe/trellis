@@ -50,26 +50,35 @@ const autoBuildAttemptedVersions = new Map<string, string>();
 
 type CliAgent = Exclude<AssignedAgent, 'unassigned'>;
 let detectedAgentsPromise: Promise<CliAgent[]> | undefined;
+let detectedAgents: CliAgent[] = [];
+const AGENT_DETECTION_TIMEOUT_MS = 2500;
 
 function detectAvailableAgents(force = false): Promise<CliAgent[]> {
   if (!detectedAgentsPromise || force) {
     detectedAgentsPromise = Promise.all(
       (['codex', 'claude'] as const).map((agent) =>
-        execFileAsync(agent, ['--version'], { timeout: 10000 }).then(() => agent, () => undefined)
+        execFileAsync(agent, ['--version'], { timeout: AGENT_DETECTION_TIMEOUT_MS }).then(() => agent, () => undefined)
       )
-    ).then((results) => results.filter((agent): agent is CliAgent => Boolean(agent)));
+    ).then((results) => {
+      detectedAgents = results.filter((agent): agent is CliAgent => Boolean(agent));
+      return detectedAgents;
+    });
   }
   return detectedAgentsPromise;
 }
 
-async function pickAutoAgent(): Promise<AssignedAgent> {
-  const available = await detectAvailableAgents();
+function pickAutoAgentFrom(available: CliAgent[]): AssignedAgent {
   const provider = activeContext ? getSpecProvider(activeContext) : undefined;
   const preferred = provider === 'codex-cli' ? 'codex' : provider === 'claude-code' ? 'claude' : undefined;
   if (preferred && available.includes(preferred)) {
     return preferred;
   }
   return available[0] ?? 'unassigned';
+}
+
+async function pickAutoAgent(): Promise<AssignedAgent> {
+  const available = await detectAvailableAgents();
+  return pickAutoAgentFrom(available);
 }
 
 // Honors an explicit agent choice from the Create Task composer when that CLI
@@ -125,8 +134,8 @@ export function activate(context: vscode.ExtensionContext): void {
           view.webview.onDidReceiveMessage((message) => handleWebviewMessage(context, view.webview, message));
           try {
             const storage = await resolveStorage();
-            await storage.prepareAgentFiles();
             await postState();
+            void prepareWorkspaceAfterStartup(storage);
           } catch (error) {
             reportWebviewBootstrapError(view.webview, error);
           }
@@ -270,13 +279,12 @@ export function deactivate(): void {
 }
 
 async function openBoard(context: vscode.ExtensionContext): Promise<void> {
-  const storage = await resolveStorage();
-
   if (panel) {
     panel.reveal(vscode.ViewColumn.One);
     try {
-      await storage.prepareAgentFiles();
+      const storage = await resolveStorage();
       await postState();
+      void prepareWorkspaceAfterStartup(storage);
     } catch (error) {
       reportWebviewBootstrapError(panel.webview, error);
     }
@@ -298,11 +306,26 @@ async function openBoard(context: vscode.ExtensionContext): Promise<void> {
   webview.onDidReceiveMessage((message) => handleWebviewMessage(context, webview, message));
 
   try {
-    await storage.prepareAgentFiles();
+    const storage = await resolveStorage();
     await postState();
+    void prepareWorkspaceAfterStartup(storage);
   } catch (error) {
     reportWebviewBootstrapError(webview, error);
   }
+}
+
+async function prepareWorkspaceAfterStartup(storage: AgentBoardStorage): Promise<void> {
+  try {
+    await storage.prepareAgentFiles();
+  } catch (error) {
+    reportWorkspacePreparationError(error);
+  }
+}
+
+function reportWorkspacePreparationError(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  diagnostics.appendLine(`[${new Date().toISOString()}] Workspace preparation failed: ${message}`);
+  console.error('Trellis: workspace preparation failed', error);
 }
 
 function reportWebviewBootstrapError(webview: vscode.Webview, error: unknown): void {
@@ -1379,7 +1402,7 @@ async function postState(): Promise<void> {
   const storage = await resolveStorage();
   const state = await storage.loadBoardState();
   const provider = activeContext ? getSpecProvider(activeContext) : undefined;
-  const availableAgents = await detectAvailableAgents();
+  const availableAgents = detectedAgents;
   const permissionAllowlist = buildAgentPermissionAllowlist(state.project.validationCommands);
   const permissionStatus = await storage.getClaudePermissionStatus(permissionAllowlist);
   const message = {
@@ -1399,7 +1422,7 @@ async function postState(): Promise<void> {
           Boolean(activeContext?.globalState.get<boolean>(ONBOARDING_COMPLETE_KEY)),
           availableAgents.length
         ),
-        autoAssignAgent: await pickAutoAgent(),
+        autoAssignAgent: pickAutoAgentFrom(availableAgents),
         agentPermissions: {
           allowlist: permissionAllowlist,
           codexMode: codexAutomationArgs(true).join(' '),
@@ -1412,6 +1435,11 @@ async function postState(): Promise<void> {
   };
   for (const webview of webviews) {
     webview.postMessage(message);
+  }
+  if (!detectedAgentsPromise) {
+    void detectAvailableAgents().then(() => postState(), (error) => {
+      diagnostics.appendLine(`[${new Date().toISOString()}] Agent detection failed: ${String(error)}`);
+    });
   }
 }
 
