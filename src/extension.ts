@@ -12,6 +12,7 @@ import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storag
 import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
 import { canRetryMissingBuildTerminal, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
+import { renderWorkflowPrompt, WorkflowPromptKind } from './workflowPrompts';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -773,7 +774,7 @@ async function runStartBuildAction(id: string): Promise<void> {
   if (claimed.claimWarning) {
     vscode.window.showWarningMessage(claimed.claimWarning);
   }
-  const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
+  const prompt = buildWorkflowPrompt('implementation', state.project.workflowPrompts?.implementation, id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
   await setTerminalOwnership(id, claimed.claimId, 'build');
   try {
     await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
@@ -826,7 +827,7 @@ async function runStartQaAction(id: string): Promise<void> {
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/start-qa.mjs', id, agent, 'terminal']);
   const started = findTask((await storage.loadBoardState()).tasks, id);
-  const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
+  const prompt = buildWorkflowPrompt('qa', state.project.workflowPrompts?.qa, id, storage.root.fsPath, started.worktreePath, started.branchName, agent);
   await setTerminalOwnership(id, started.qaClaimId, 'qa');
   try {
     await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
@@ -1065,55 +1066,15 @@ function agentLaunchCommand(
   );
 }
 
-function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
-  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.trellis/scripts`;
-  return [
-    `You are the assigned implementation agent for Trellis task ${id}.`,
-    worktreePath && branchName
-      ? `Your working directory is a dedicated git worktree on branch ${branchName}. Do all code work here and commit to this branch.`
-      : 'This task uses direct-on-main mode. Work in the repository root, keep changes scoped to this task, and do not start another build concurrently.',
-    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .trellis files inside a worktree; the board scripts resolve the main checkout automatically.`,
-    `Read ${mainRoot}/.trellis/project.json and the task JSON before editing, including the latest comments, activityLog, and qaNotes entries for human or QA feedback.`,
-    'Implement only this task. Update relevantFiles, agentNotes, and activityLog in the main task file as you work.',
-    `When implementation is complete: run node "${scripts}/run-validation.mjs" ${id} (required - it records validation evidence), then node "${scripts}/complete-task.mjs" ${id}.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal. If it returns a task, continue in its printed worktree and repeat until it prints {"noTask":true}.`,
-    'If blocked, update the task with a blocker note and move it to human-review.'
-  ].join('\n');
-}
-
-function buildQaPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string): string {
-  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.trellis/scripts`;
-  return [
-    `You are the QA agent for Trellis task ${id}.`,
-    worktreePath && branchName
-      ? `Your working directory is the task's git worktree on branch ${branchName}; review the implementation here.`
-      : 'Review the direct-on-main implementation in the repository root.',
-    `The durable task record lives in the MAIN checkout: ${taskFile}. Never edit .trellis files inside a worktree.`,
-    `Read ${mainRoot}/.trellis/project.json and the task JSON.`,
-    'Review acceptanceCriteria, qaChecklist, designQaChecklist, changed files on the branch, agentNotes, and validation evidence.',
-    `Run node "${scripts}/run-validation.mjs" ${id} to verify the validation commands pass, plus any functional checks the task calls for. Record findings in qaEvidence.`,
-    `If QA passes, run: node "${scripts}/pass-qa.mjs" ${id} "QA passed."`,
-    `If QA fails, run: node "${scripts}/fail-qa.mjs" ${id} "specific failure reason"`
-  ].join('\n');
-}
-
-function buildRepairPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
-  const taskFile = `${mainRoot}/.trellis/tasks/${id}.json`;
-  const scripts = `${mainRoot}/.trellis/scripts`;
-  return [
-    `You are the implementation agent automatically repairing failed QA for Trellis task ${id}.`,
-    worktreePath && branchName
-      ? `Work only in the existing task worktree on branch ${branchName}. Commit the repair to this branch.`
-      : 'This repair uses direct-on-main mode. Work in the repository root and keep the repair scoped to this task.',
-    `Read the durable task record at ${taskFile}, especially the latest comments, qaNotes, qaEvidence, activityLog, and failed validation output.`,
-    `Also read ${mainRoot}/.trellis/project.json before editing.`,
-    'Fix the specific QA failure without expanding task scope. Update agentNotes, relevantFiles, and activityLog as you work.',
-    `When repaired, run node "${scripts}/run-validation.mjs" ${id}, then node "${scripts}/complete-task.mjs" ${id}. QA will start again automatically.`,
-    `Then run node "${scripts}/claim-next-task.mjs" ${agent} terminal and continue any returned task until it prints {"noTask":true}.`,
-    'If the failure cannot be repaired safely, record the blocker and move the task to human-review.'
-  ].join('\n');
+function buildWorkflowPrompt(kind: WorkflowPromptKind, template: string | undefined, id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
+  return renderWorkflowPrompt(kind, template, {
+    taskId: id,
+    repositoryPath: mainRoot,
+    worktreePath,
+    branchName,
+    scriptsPath: `${mainRoot}/.trellis/scripts`,
+    agent
+  });
 }
 
 function agentCommand(agent: Exclude<AssignedAgent, 'unassigned'>): string {
@@ -1269,7 +1230,8 @@ async function startFailedQaRepairs(): Promise<void> {
     });
     await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/claim-task.mjs', task.id, agent, 'terminal']);
     const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
-    const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
+    const project = (await storage.loadBoardState()).project;
+    const prompt = buildWorkflowPrompt('repair', project.workflowPrompts?.repair, task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
     await setTerminalOwnership(task.id, repairing.claimId, 'build');
     try {
       await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);

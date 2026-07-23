@@ -94,6 +94,11 @@ interface ProjectContext {
   codingRules: string[];
   agentRules: string[];
   validationCommands: string[];
+  workflowPrompts?: {
+    implementation?: string;
+    qa?: string;
+    repair?: string;
+  };
   designRules: string[];
   glossary: string[];
   inference: {
@@ -1544,6 +1549,34 @@ function App(): JSX.Element {
             </div>
           </div>
 
+          <section className="workflowPromptSection" aria-labelledby="workflow-prompts-title">
+            <div className="workflowPromptIntro">
+              <h3 id="workflow-prompts-title">Workflow agent prompts</h3>
+              <p>Customize the instructions sent when Trellis launches each workflow state. Changes save automatically and each prompt is independent.</p>
+              <p className="fieldHint">Placeholders: <code>{'{{taskId}}'}</code>, <code>{'{{repositoryPath}}'}</code>, <code>{'{{worktreePath}}'}</code>, <code>{'{{branchName}}'}</code>, <code>{'{{scriptsPath}}'}</code>, and <code>{'{{agent}}'}</code>. Trellis replaces them when the run starts.</p>
+            </div>
+            <div className="workflowPromptEditors">
+              <PromptTemplateField
+                label="Implementation"
+                description="Used when an agent starts building a ready task."
+                value={projectDraft.workflowPrompts?.implementation ?? ''}
+                onChange={(implementation) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, implementation } })}
+              />
+              <PromptTemplateField
+                label="QA"
+                description="Used when an agent reviews a completed implementation."
+                value={projectDraft.workflowPrompts?.qa ?? ''}
+                onChange={(qa) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, qa } })}
+              />
+              <PromptTemplateField
+                label="Failed-QA repair"
+                description="Used when implementation resumes to address failed QA."
+                value={projectDraft.workflowPrompts?.repair ?? ''}
+                onChange={(repair) => updateProject({ ...projectDraft, workflowPrompts: { ...projectDraft.workflowPrompts, repair } })}
+              />
+            </div>
+          </section>
+
           {projectDraft.inference?.lastInferred && (
             <div className="detailSections repoScan">
               <h4 className="repoScanTitle">Repo scan · {timeAgo(projectDraft.inference.lastInferred)}</h4>
@@ -1753,6 +1786,17 @@ function Field({ label, value, onChange, placeholder, big = false }: { label: st
 
 function ListField({ label, value, onChange }: { label: string; value: string[]; onChange: (value: string) => void }): JSX.Element {
   return <Field label={label} value={(value ?? []).join('\n')} onChange={onChange} />;
+}
+
+function PromptTemplateField({ label, description, value, onChange }: { label: string; description: string; value: string; onChange: (value: string) => void }): JSX.Element {
+  return (
+    <label className="promptTemplateField">
+      <span>{label}</span>
+      <small>{description}</small>
+      <textarea rows={10} value={value} onChange={(event) => onChange(event.target.value)} spellCheck={false} />
+      <small>Leaving this empty uses Trellis’s built-in prompt.</small>
+    </label>
+  );
 }
 
 function hasTaskDetails(task: Task): boolean {
