@@ -18,3 +18,7 @@ export function updateIntake(
 ): PendingIntake[] {
   return items.map((item) => item.requestId === requestId ? { ...item, ...patch } : item);
 }
+
+export function dismissIntake(items: PendingIntake[], requestId: string): PendingIntake[] {
+  return items.filter((item) => item.requestId !== requestId);
+}

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
-import { PendingIntake, queueIntake, updateIntake } from './intakeState';
+import { dismissIntake, PendingIntake, queueIntake, updateIntake } from './intakeState';
 import { branchNameValidationError, generatedTaskBranchName } from '../src/branchNames';
 import { compareTasksByLatestUpdate } from '../src/taskOrdering';
 
@@ -1029,17 +1029,32 @@ function App(): JSX.Element {
             {pendingIntakes.length > 0 && (
               <div className="intakeQueue" aria-label="Recent task submissions" aria-live="polite">
                 {pendingIntakes.map((item) => (
-                  <button
-                    type="button"
+                  <div
                     key={item.requestId}
                     className={`intakeQueueItem intake-${item.state}`}
-                    disabled={!item.taskId}
                     title={item.message || item.summary}
-                    onClick={() => item.taskId && setSelectedId(item.taskId)}
                   >
-                    <span className="intakeQueueState">{item.state === 'done' ? 'Ready' : item.state === 'error' ? 'Error' : 'Drafting'}</span>
-                    <span className="intakeQueueSummary">{item.summary}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="intakeQueueOpen"
+                      disabled={!item.taskId}
+                      onClick={() => item.taskId && setSelectedId(item.taskId)}
+                    >
+                      <span className="intakeQueueState">{item.state === 'done' ? 'Ready' : item.state === 'error' ? 'Error' : 'Drafting'}</span>
+                      <span className="intakeQueueSummary">{item.summary}</span>
+                    </button>
+                    {item.state === 'done' && (
+                      <button
+                        type="button"
+                        className="intakeQueueDismiss"
+                        aria-label={`Dismiss Ready submission: ${item.summary}`}
+                        title={`Dismiss ${item.summary}`}
+                        onClick={() => setPendingIntakes((items) => dismissIntake(items, item.requestId))}
+                      >
+                        <XIcon />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
