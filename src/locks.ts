@@ -16,7 +16,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Mirrors the scaffolded .agent-board/scripts/_lib.mjs lock: mkdir is the
+// Mirrors the scaffolded .trellis/scripts/_lib.mjs lock: mkdir is the
 // atomic acquisition primitive. Heartbeats keep asynchronous holders fresh,
 // while PID liveness protects holders blocked in synchronous Git operations.
 function isProcessAlive(pid: unknown): boolean {

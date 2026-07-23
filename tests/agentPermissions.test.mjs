@@ -11,23 +11,23 @@ assert.deepEqual(codexAutomationArgs(false), []);
 assert.deepEqual(codexAutomationArgs(true), ['--sandbox', 'workspace-write', '--ask-for-approval', 'never']);
 assert.deepEqual(codexAutomationArgs(true, {
   mainRoot: '/repo',
-  worktreePath: '/repo/.agent-board/worktrees/TASK-001',
+  worktreePath: '/repo/.trellis/worktrees/TASK-001',
   taskId: 'TASK-001'
 }), [
   '--sandbox', 'workspace-write', '--ask-for-approval', 'never',
   '--add-dir', '/repo/.git',
-  '--add-dir', '/repo/.agent-board/tasks',
-  '--add-dir', '/repo/.agent-board/locks'
+  '--add-dir', '/repo/.trellis/tasks',
+  '--add-dir', '/repo/.trellis/locks'
 ]);
 assert.deepEqual(codexAutomationArgs(true, {
   mainRoot: '/repo/',
-  worktreePath: '/repo/.agent-board/worktrees/TASK-001',
+  worktreePath: '/repo/.trellis/worktrees/TASK-001',
   taskId: 'TASK-001'
 }), [
   '--sandbox', 'workspace-write', '--ask-for-approval', 'never',
   '--add-dir', '/repo/.git',
-  '--add-dir', '/repo/.agent-board/tasks',
-  '--add-dir', '/repo/.agent-board/locks'
+  '--add-dir', '/repo/.trellis/tasks',
+  '--add-dir', '/repo/.trellis/locks'
 ]);
 assert.equal(codexAutomationArgs(true).some((entry) => /danger|bypass|full-access/.test(entry)), false);
 const scopedCommand = codexLaunchCommand("/tmp/a prompt's file.md", true);
@@ -52,8 +52,8 @@ const claudeArgs = claudeAutomationArgs(true, [
 assert.deepEqual(claudeArgs.slice(0, 3), ['--add-dir', '/tmp/main checkout', '--allowedTools']);
 assert.ok(claudeArgs.includes('Edit(/tmp/a worktree/**)'));
 assert.ok(claudeArgs.includes('Write(/tmp/a worktree/**)'));
-assert.ok(claudeArgs.includes('Read(/tmp/main checkout/.agent-board/tasks/TASK-041.json)'));
-assert.ok(claudeArgs.includes('Edit(/tmp/main checkout/.agent-board/tasks/TASK-041.json)'));
+assert.ok(claudeArgs.includes('Read(/tmp/main checkout/.trellis/tasks/TASK-041.json)'));
+assert.ok(claudeArgs.includes('Edit(/tmp/main checkout/.trellis/tasks/TASK-041.json)'));
 assert.ok(claudeArgs.includes('Bash(npm test)'));
 assert.equal(claudeArgs.some((entry) => /push|reset --hard|rm -rf|bypass/.test(entry)), false);
 const launch = claudeLaunchCommand("/tmp/main checkout/prompt's file.md", claudeArgs);
@@ -69,7 +69,7 @@ const allowlist = buildAgentPermissionAllowlist([
   'rm -rf dist'
 ]);
 assert.ok(allowlist.includes('Bash(git commit:*)'));
-assert.ok(allowlist.includes('Bash(node */.agent-board/scripts/*)'));
+assert.ok(allowlist.includes('Bash(node */.trellis/scripts/*)'));
 assert.ok(allowlist.includes('Bash(npm run typecheck)'));
 assert.equal(allowlist.some((entry) => /push|reset --hard|rm -rf/.test(entry)), false);
 

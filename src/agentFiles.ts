@@ -14,20 +14,20 @@ export function agentsMarkdown(): string {
 
 ## Agent Board Workflow
 
-This repository uses Trellis as the source of truth for AI coding work. Task state lives in \`.agent-board/tasks/*.json\` in the MAIN checkout; do not rely on copied prompts as the durable task record.
+This repository uses Trellis as the source of truth for AI coding work. Task state lives in \`.trellis/tasks/*.json\` in the MAIN checkout; do not rely on copied prompts as the durable task record.
 
 Agents should follow this workflow:
 
-1. List \`.agent-board/tasks/\` to see all tasks and read \`.agent-board/project.json\` for project overview, coding rules, agent rules, validation commands, design rules, glossary, and inferred stack context.
+1. List \`.trellis/tasks/\` to see all tasks and read \`.trellis/project.json\` for project overview, coding rules, agent rules, validation commands, design rules, glossary, and inferred stack context.
 2. Find tasks with status \`ready-for-agent\`. Prefer tasks where \`assignedAgent\` is \`codex\` or \`unassigned\`.
-3. Claim work with \`node .agent-board/scripts/claim-next-task.mjs codex chat\` (or \`claim-task.mjs TASK-ID codex chat\`). The \`chat\` surface prevents Trellis from also launching a terminal for the task. If another run owns it, do not duplicate the work; report the existing phase, agent, and surface.
-4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
+3. Claim work with \`node .trellis/scripts/claim-next-task.mjs codex chat\` (or \`claim-task.mjs TASK-ID codex chat\`). The \`chat\` surface prevents Trellis from also launching a terminal for the task. If another run owns it, do not duplicate the work; report the existing phase, agent, and surface.
+4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.trellis/\`.
 5. Read the task JSON printed by the claim script. Implement only that task.
 6. Update \`agentNotes\`, \`relevantFiles\`, and append clear entries to \`activityLog\` in the main checkout's task file as work progresses.
 7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
-8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\`. This runs the task or project validation commands in the worktree and records evidence on the task. It is required: \`complete-task\` refuses without a passing validation run.
-9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
-10. If the build was claimed in chat, continue QA in chat with \`node .agent-board/scripts/start-qa.mjs TASK-ID codex chat\`; never start a duplicate terminal. Review acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`.
+8. Run \`node .trellis/scripts/run-validation.mjs TASK-ID\`. This runs the task or project validation commands in the worktree and records evidence on the task. It is required: \`complete-task\` refuses without a passing validation run.
+9. Move the task to QA with \`node .trellis/scripts/complete-task.mjs TASK-ID\`.
+10. If the build was claimed in chat, continue QA in chat with \`node .trellis/scripts/start-qa.mjs TASK-ID codex chat\`; never start a duplicate terminal. Review acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "specific failure reason"\`.
 11. If blocked, add a blocker note, append an activity entry, and set \`status\` to \`human-review\`.
 
 Preserve unknown fields in Trellis JSON files. The scripts take a per-task lock; if you edit task JSON manually, reread the file first and avoid overwriting newer updates from another agent or the VS Code extension.
@@ -41,27 +41,27 @@ Use Trellis when asked to continue project work in this repository.
 
 ## Workflow
 
-1. List \`.agent-board/tasks/\` and read \`.agent-board/project.json\` for project overview, rules, validation commands, design rules, glossary, and inferred repo context.
+1. List \`.trellis/tasks/\` and read \`.trellis/project.json\` for project overview, rules, validation commands, design rules, glossary, and inferred repo context.
 2. Pick the highest-priority task with status \`ready-for-agent\` assigned to \`claude\` or \`unassigned\`.
-3. Claim it with \`node .agent-board/scripts/claim-next-task.mjs claude chat\` (or \`claim-task.mjs TASK-ID claude chat\`). The \`chat\` surface prevents Trellis from launching a duplicate terminal. If another run owns the task, return to that session.
-4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.agent-board/\`.
+3. Claim it with \`node .trellis/scripts/claim-next-task.mjs claude chat\` (or \`claim-task.mjs TASK-ID claude chat\`). The \`chat\` surface prevents Trellis from launching a duplicate terminal. If another run owns the task, return to that session.
+4. Do ALL code work in the printed worktree path. In \`direct-on-main\` mode this is the main checkout and only one build may run at once. Task state always lives in the MAIN checkout's \`.trellis/\`.
 5. Build according to the project context, task description, acceptance criteria, constraints, and QA checklist.
 6. Update \`relevantFiles\`, \`agentNotes\`, and append concise \`activityLog\` entries in the main checkout's task file as work progresses.
 7. Commit your work in the selected workspace. In branch-per-task mode, commit on the task branch; in direct-on-main mode, commit on the current project branch.
-8. Run \`node .agent-board/scripts/run-validation.mjs TASK-ID\` — it runs the validation commands in the worktree and records evidence. \`complete-task\` refuses without a passing validation run.
-9. Move the task to QA with \`node .agent-board/scripts/complete-task.mjs TASK-ID\`.
-10. Continue chat-owned builds into QA with \`node .agent-board/scripts/start-qa.mjs TASK-ID claude chat\`. Check acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "reason"\`.
+8. Run \`node .trellis/scripts/run-validation.mjs TASK-ID\` — it runs the validation commands in the worktree and records evidence. \`complete-task\` refuses without a passing validation run.
+9. Move the task to QA with \`node .trellis/scripts/complete-task.mjs TASK-ID\`.
+10. Continue chat-owned builds into QA with \`node .trellis/scripts/start-qa.mjs TASK-ID claude chat\`. Check acceptance criteria and changed files, re-run \`run-validation.mjs\`, then \`pass-qa.mjs TASK-ID "note"\` or \`fail-qa.mjs TASK-ID "reason"\`.
 11. Move the task to \`human-review\` if blocked or uncertain.
-12. After completing a task, run \`node .agent-board/scripts/claim-next-task.mjs claude chat\`. Continue in the returned worktree and repeat until it prints \`{"noTask":true}\`.
+12. After completing a task, run \`node .trellis/scripts/claim-next-task.mjs claude chat\`. Continue in the returned worktree and repeat until it prints \`{"noTask":true}\`.
 
-The main checkout's \`.agent-board/\` folder is the source of truth. Preserve unknown fields; the scripts lock tasks while writing, so prefer them over manual JSON edits.
+The main checkout's \`.trellis/\` folder is the source of truth. Preserve unknown fields; the scripts lock tasks while writing, so prefer them over manual JSON edits.
 `;
 }
 
 export function boardLibScript(): string {
   return `#!/usr/bin/env node
 // Shared helpers for Trellis scripts. Task state always lives in the MAIN
-// git worktree's .agent-board/, no matter which worktree a script runs from.
+// git worktree's .trellis/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -112,7 +112,7 @@ function meaningfulGitChanges(cwd) {
   return git(['status', '--porcelain=v1', '--untracked-files=all'], cwd)
     .split('\\n')
     .filter(Boolean)
-    .filter((line) => !line.slice(3).startsWith('.agent-board/'));
+    .filter((line) => !line.slice(3).startsWith('.trellis/'));
 }
 
 export function sameSnapshot(left, right) {
@@ -156,7 +156,7 @@ export function resolveMainRoot(startDir = process.cwd()) {
       const first = porcelain.split('\\n').find((line) => line.startsWith('worktree '));
       if (first) {
         const mainPath = first.slice('worktree '.length).trim();
-        if (existsSync(join(mainPath, '.agent-board'))) {
+        if (existsSync(join(mainPath, '.trellis'))) {
           return mainPath;
         }
       }
@@ -166,7 +166,7 @@ export function resolveMainRoot(startDir = process.cwd()) {
   }
   let dir = resolve(startDir);
   while (true) {
-    if (existsSync(join(dir, '.agent-board'))) {
+    if (existsSync(join(dir, '.trellis'))) {
       return dir;
     }
     const parent = dirname(dir);
@@ -179,7 +179,7 @@ export function resolveMainRoot(startDir = process.cwd()) {
 
 export function taskPath(mainRoot, taskId) {
   assertTaskId(taskId);
-  return join(mainRoot, '.agent-board', 'tasks', taskId + '.json');
+  return join(mainRoot, '.trellis', 'tasks', taskId + '.json');
 }
 
 export async function readJson(path) {
@@ -198,7 +198,7 @@ function sleep(ms) {
 
 export async function acquireLock(mainRoot, key, owner) {
   assertLockKey(key);
-  const locksDir = join(mainRoot, '.agent-board', 'locks');
+  const locksDir = join(mainRoot, '.trellis', 'locks');
   mkdirSync(locksDir, { recursive: true });
   const lockDir = join(locksDir, key);
   const deadline = Date.now() + LOCK_TIMEOUT_MS;
@@ -302,7 +302,7 @@ export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task')
     return { branchName, worktreePath: '', message: 'Claimed task. No worktree was created because this folder is not a Git repository.' };
   }
   try {
-    const expectedPath = resolve(join(mainRoot, '.agent-board', 'worktrees', task.id));
+    const expectedPath = resolve(join(mainRoot, '.trellis', 'worktrees', task.id));
     const porcelain = git(['worktree', 'list', '--porcelain'], mainRoot);
     for (const block of porcelain.split('\\n\\n')) {
       if (block.includes('branch refs/heads/' + branchName)) {
@@ -318,7 +318,7 @@ export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task')
     }
     const worktreePath = expectedPath;
     const baseSha = git(['rev-parse', 'HEAD'], mainRoot);
-    mkdirSync(join(mainRoot, '.agent-board', 'worktrees'), { recursive: true });
+    mkdirSync(join(mainRoot, '.trellis', 'worktrees'), { recursive: true });
     let branchExists = true;
     try {
       git(['rev-parse', '--verify', 'refs/heads/' + branchName], mainRoot);
@@ -342,14 +342,14 @@ export function normalizeWorkflowMode(project) {
 
 export async function projectWorkflowMode(mainRoot) {
   try {
-    return normalizeWorkflowMode(await readJson(join(mainRoot, '.agent-board', 'project.json')));
+    return normalizeWorkflowMode(await readJson(join(mainRoot, '.trellis', 'project.json')));
   } catch {
     return 'branch-per-task';
   }
 }
 
 export async function assertDirectModeAvailable(mainRoot, taskId) {
-  const tasksDir = join(mainRoot, '.agent-board', 'tasks');
+  const tasksDir = join(mainRoot, '.trellis', 'tasks');
   for (const file of await readdir(tasksDir)) {
     if (!file.endsWith('.json')) continue;
     const other = await readJson(join(tasksDir, file));
@@ -385,12 +385,12 @@ import { assertDirectModeAvailable, assertTaskId, effectivePriority, ensureWorkt
 await runScript(async () => {
   const [agent, surface = 'chat'] = process.argv.slice(2);
   if (!agent || !['claude', 'codex'].includes(agent) || !['chat', 'terminal'].includes(surface)) {
-    throw fail(1, 'Usage: node .agent-board/scripts/claim-next-task.mjs claude|codex chat|terminal');
+    throw fail(1, 'Usage: node .trellis/scripts/claim-next-task.mjs claude|codex chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
   const workflowMode = await projectWorkflowMode(mainRoot);
-  const tasksDir = join(mainRoot, '.agent-board', 'tasks');
+  const tasksDir = join(mainRoot, '.trellis', 'tasks');
   const files = (await readdir(tasksDir)).filter((file) => file.endsWith('.json'));
   const records = [];
   for (const file of files) {
@@ -407,7 +407,7 @@ await runScript(async () => {
   }
   const tasks = records.map(({ task }) => task);
   let project = {};
-  try { project = await readJson(join(mainRoot, '.agent-board', 'project.json')); } catch {}
+  try { project = await readJson(join(mainRoot, '.trellis', 'project.json')); } catch {}
 
   const candidates = records
     .filter(({ task }) => (task.status === 'ready-for-agent' || leaseExpired(task)) && (task.assignedAgent === agent || task.assignedAgent === 'unassigned'))
@@ -476,20 +476,20 @@ import { assertDirectModeAvailable, ensureWorktree, fail, leaseExpired, leaseExp
 await runScript(async () => {
   const [taskId, agent, surface = 'chat'] = process.argv.slice(2);
   if (!taskId || !agent || !['claude', 'codex'].includes(agent) || !['chat', 'terminal'].includes(surface)) {
-    throw fail(1, 'Usage: node .agent-board/scripts/claim-task.mjs TASK-001 claude|codex chat|terminal');
+    throw fail(1, 'Usage: node .trellis/scripts/claim-task.mjs TASK-001 claude|codex chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
   const workflowMode = await projectWorkflowMode(mainRoot);
   const path = taskPath(mainRoot, taskId);
-  const tasksDir = join(mainRoot, '.agent-board', 'tasks');
+  const tasksDir = join(mainRoot, '.trellis', 'tasks');
   const tasks = [];
   for (const file of await (await import('node:fs/promises')).readdir(tasksDir)) {
     if (!file.endsWith('.json')) continue;
     try { tasks.push(await readJson(join(tasksDir, file))); } catch {}
   }
   let project = {};
-  try { project = await readJson(join(mainRoot, '.agent-board', 'project.json')); } catch {}
+  try { project = await readJson(join(mainRoot, '.trellis', 'project.json')); } catch {}
   const candidate = await readJson(path);
   const claimMode = candidate.workflowMode || workflowMode;
 
@@ -561,7 +561,7 @@ import { codeSnapshot, fail, readJson, resolveMainRoot, runScript, sameSnapshot,
 await runScript(async () => {
   const taskId = process.argv[2];
   if (!taskId) {
-    throw fail(1, 'Usage: node .agent-board/scripts/complete-task.mjs TASK-001');
+    throw fail(1, 'Usage: node .trellis/scripts/complete-task.mjs TASK-001');
   }
 
   const mainRoot = resolveMainRoot();
@@ -573,7 +573,7 @@ await runScript(async () => {
       throw fail(2, 'Task must be building to complete. Current status: ' + current.status + '.');
     }
     if (!current.lastValidation || !current.lastValidation.passed) {
-      throw fail(3, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+      throw fail(3, 'Validation has not passed. Run: node .trellis/scripts/run-validation.mjs ' + taskId);
     }
     if (current.lastValidation.phase !== 'build' || current.lastValidation.claimId !== current.claimId) {
       throw fail(3, 'Validation does not belong to the current build claim. Re-run validation.');
@@ -583,7 +583,7 @@ await runScript(async () => {
       throw fail(3, 'Code changed after validation. Commit changes and re-run validation.');
     }
     if (current.claimedAt && current.lastValidation.ranAt <= current.claimedAt) {
-      throw fail(3, 'Validation is older than the current claim. Re-run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+      throw fail(3, 'Validation is older than the current claim. Re-run: node .trellis/scripts/run-validation.mjs ' + taskId);
     }
     const now = new Date().toISOString();
     const actor = current.claimedBy || 'agent';
@@ -607,7 +607,7 @@ import { assertDirectModeAvailable, ensureWorktree, fail, newClaimId, readJson, 
 await runScript(async () => {
   const [taskId, agent = 'qa', requestedSurface] = process.argv.slice(2);
   if (!taskId || !['claude', 'codex'].includes(agent)) {
-    throw fail(1, 'Usage: node .agent-board/scripts/start-qa.mjs TASK-001 codex|claude chat|terminal');
+    throw fail(1, 'Usage: node .trellis/scripts/start-qa.mjs TASK-001 codex|claude chat|terminal');
   }
 
   const mainRoot = resolveMainRoot();
@@ -691,7 +691,7 @@ function runCommand(command, cwd) {
 await runScript(async () => {
   const taskId = process.argv[2];
   if (!taskId) {
-    throw fail(1, 'Usage: node .agent-board/scripts/run-validation.mjs TASK-001');
+    throw fail(1, 'Usage: node .trellis/scripts/run-validation.mjs TASK-001');
   }
 
   const mainRoot = resolveMainRoot();
@@ -699,7 +699,7 @@ await runScript(async () => {
   const task = await readJson(path);
   let project = {};
   try {
-    project = await readJson(join(mainRoot, '.agent-board', 'project.json'));
+    project = await readJson(join(mainRoot, '.trellis', 'project.json'));
   } catch {
     // Project context is optional here.
   }
@@ -788,7 +788,7 @@ await runScript(async () => {
   const [taskId, ...noteParts] = process.argv.slice(2);
   const note = noteParts.join(' ').trim() || 'QA passed.';
   if (!taskId) {
-    throw fail(1, 'Usage: node .agent-board/scripts/pass-qa.mjs TASK-001 "optional note"');
+    throw fail(1, 'Usage: node .trellis/scripts/pass-qa.mjs TASK-001 "optional note"');
   }
 
   const mainRoot = resolveMainRoot();
@@ -803,7 +803,7 @@ await runScript(async () => {
       throw fail(3, 'qaEvidence is empty. Run run-validation.mjs and record QA evidence before passing.');
     }
     if (!current.lastValidation || !current.lastValidation.passed) {
-      throw fail(4, 'Validation has not passed. Run: node .agent-board/scripts/run-validation.mjs ' + taskId);
+      throw fail(4, 'Validation has not passed. Run: node .trellis/scripts/run-validation.mjs ' + taskId);
     }
     if (current.lastValidation.phase !== 'qa' || current.lastValidation.claimId !== current.qaClaimId || current.lastValidation.ranAt <= current.qaStartedAt) {
       throw fail(4, 'QA must run fresh validation after QA starts.');
@@ -837,7 +837,7 @@ await runScript(async () => {
   const [taskId, ...reasonParts] = process.argv.slice(2);
   const reason = reasonParts.join(' ').trim();
   if (!taskId || !reason) {
-    throw fail(1, 'Usage: node .agent-board/scripts/fail-qa.mjs TASK-001 "failure reason"');
+    throw fail(1, 'Usage: node .trellis/scripts/fail-qa.mjs TASK-001 "failure reason"');
   }
 
   const mainRoot = resolveMainRoot();

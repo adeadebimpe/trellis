@@ -16,5 +16,5 @@ All notable changes to Trellis are documented here.
 - Renamed the extension from Agent Board to Trellis.
 - Added the interlocking-rails Trellis icon and Marketplace branding.
 - Added Marketplace metadata and publication documentation.
-- Preserved `.agent-board/`, `agentBoard.*` settings, and command identifiers for compatibility.
+- Migrates legacy `.agent-board/` workspace state to `.trellis/` while preserving `agentBoard.*` settings and command identifiers for compatibility.
 - Included repo-native task planning, agent routing, isolated Git worktrees, validation evidence, QA feedback, archiving, and local merge workflows.

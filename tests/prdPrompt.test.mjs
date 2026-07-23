@@ -45,7 +45,7 @@ const project = {
   goals: ['Coordinate coding agents'],
   architectureNotes: 'Extension backend in src and React webview in webview.',
   codingRules: ['Preserve unknown task fields.'],
-  agentRules: ['Read .agent-board/project.json.'],
+  agentRules: ['Read .trellis/project.json.'],
   validationCommands: ['npm run compile'],
   designRules: ['Dense command-centre UI.'],
   glossary: [],
@@ -71,7 +71,7 @@ const intakeTask = {
     sourceUrl: 'https://issues.example.test/ENG-142',
     intent: 'investigate',
     createdAt: '2026-07-18T00:00:00.000Z',
-    attachments: [{ name: 'error.png', path: '.agent-board/attachments/TASK-003/error.png', mediaType: 'image/png', size: 42 }]
+    attachments: [{ name: 'error.png', path: '.trellis/attachments/TASK-003/error.png', mediaType: 'image/png', size: 42 }]
   }
 };
 const intakeBrief = getPrdSourceBrief(intakeTask);

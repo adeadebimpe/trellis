@@ -106,7 +106,7 @@
           "type": "boolean",
           "default": true,
           "title": "Git-ignore Board Directory",
-          "description": "Add .agent-board/ to the workspace root .gitignore. Disable this if you intentionally commit Trellis tasks and project context."
+          "description": "Add .trellis/ to the workspace root .gitignore. Disable this if you intentionally commit Trellis tasks and project context."
         },
         "agentBoard.autoContinue": {
           "type": "boolean",
@@ -132,7 +132,8 @@
     "test:locks": "node tests/locks.test.mjs",
     "test:inference": "node tests/inference.test.mjs",
     "test:intake": "node tests/intakeState.test.mjs",
-    "test": "npm run test:prd && npm run test:draft-status && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks && npm run test:inference && npm run test:intake",
+    "test:migration": "node tests/stateMigration.test.mjs",
+    "test": "npm run test:prd && npm run test:draft-status && npm run test:gitignore && npm run test:archive && npm run test:onboarding && npm run test:permissions && npm run test:handoff && npm run test:scripts && npm run test:lifecycle && npm run test:locks && npm run test:inference && npm run test:intake && npm run test:migration",
     "typecheck": "tsc --noEmit",
     "compile": "npm run typecheck && npm run build",
     "package": "npm run compile && vsce package"

@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { agentsMarkdown, boardGitignore, boardLibScript, claimNextTaskScript, claimTaskScript, claudeSkillMarkdown, columns, completeTaskScript, failQaScript, heartbeatTaskScript, passQaScript, runValidationScript, startQaScript } from './agentFiles';
 import { withLock } from './locks';
-import { ensureAgentBoardIgnore } from './gitignore';
+import { ensureTrellisIgnore } from './gitignore';
 import { deriveTaskTitle } from './prdPrompt';
 import { inferredArchitectureNotes, inferredContextNotes, parseReadme, shouldReplaceArchitecture, shouldReplaceNotes, shouldReplaceValidation } from './inferenceSummary';
 import { selectMergedTasksToArchive } from './archive';
@@ -12,6 +12,7 @@ import { assertBoardActionAllowed, assertStatusChangeAllowed } from './taskLifec
 import { assertTaskId, assertTaskLockKey } from './taskIds';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
+import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,11 +34,15 @@ export class AgentBoardStorage {
   }
 
   get boardDir(): vscode.Uri {
+    return vscode.Uri.joinPath(this.root, '.trellis');
+  }
+
+  get legacyBoardDir(): vscode.Uri {
     return vscode.Uri.joinPath(this.root, '.agent-board');
   }
 
   async isInitialized(): Promise<boolean> {
-    return this.exists(this.boardDir);
+    return (await this.ensureStateDirectory()) !== 'uninitialized';
   }
 
   async getClaudePermissionStatus(allowlist: string[]): Promise<{ enabled: boolean; settingsExist: boolean }> {
@@ -69,6 +74,7 @@ export class AgentBoardStorage {
   }
 
   async prepareAgentFiles(): Promise<void> {
+    await this.ensureStateDirectory();
     await this.ensureRootGitignore();
     await this.ensureDir(this.boardDir);
     for (const dir of ['tasks', 'qa', 'scripts', 'locks', 'prompts', 'worktrees', 'archive']) {
@@ -103,6 +109,41 @@ export class AgentBoardStorage {
     }
   }
 
+  private async ensureStateDirectory(): Promise<'uninitialized' | 'current'> {
+    const action = stateDirectoryAction(await this.exists(this.boardDir), await this.exists(this.legacyBoardDir));
+    if (action === 'conflict') {
+      const message = 'Trellis found both .trellis and legacy .agent-board state. To prevent task loss, Trellis will not choose between them. Move the authoritative files into .trellis, remove .agent-board, and reopen the workspace.';
+      vscode.window.showErrorMessage(message);
+      throw new Error(message);
+    }
+    if (action !== 'migrate-legacy') {
+      return action;
+    }
+
+    await vscode.workspace.fs.rename(this.legacyBoardDir, this.boardDir, { overwrite: false });
+    const worktreesDir = vscode.Uri.joinPath(this.boardDir, 'worktrees');
+    let entries: Array<[string, vscode.FileType]> = [];
+    try {
+      entries = await vscode.workspace.fs.readDirectory(worktreesDir);
+    } catch {
+      // Legacy workspaces are not required to have task worktrees.
+    }
+    const worktreePaths = migratedWorktreePaths(this.boardDir.fsPath, entries, vscode.FileType.Directory);
+    if (worktreePaths.length && await this.exists(vscode.Uri.joinPath(this.root, '.git'))) {
+      try {
+        await execFileAsync('git', ['worktree', 'repair', ...worktreePaths], {
+          cwd: this.root.fsPath,
+          timeout: 120000
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Trellis moved legacy state to .trellis, but Git worktree repair failed. Run "git worktree repair .trellis/worktrees/*" before continuing. ${detail}`);
+      }
+    }
+    vscode.window.showInformationMessage('Trellis migrated workspace state from .agent-board to .trellis.');
+    return 'current';
+  }
+
   private async ensureRootGitignore(): Promise<void> {
     const enabled = vscode.workspace.getConfiguration('agentBoard', this.root)
       .get<boolean>('gitignoreBoardDirectory', true);
@@ -117,7 +158,7 @@ export class AgentBoardStorage {
     } catch {
       // A missing root .gitignore is created below.
     }
-    const next = ensureAgentBoardIgnore(existing);
+    const next = ensureTrellisIgnore(existing);
     if (next !== existing) {
       await vscode.workspace.fs.writeFile(gitignoreUri, encoder.encode(next));
     }
@@ -128,13 +169,13 @@ export class AgentBoardStorage {
     }
     trackedBoardNoticeRoots.add(rootPath);
     try {
-      const { stdout } = await execFileAsync('git', ['ls-files', '--', '.agent-board'], {
+      const { stdout } = await execFileAsync('git', ['ls-files', '--', '.trellis'], {
         cwd: rootPath,
         timeout: 10000
       });
       if (stdout.trim()) {
         vscode.window.showInformationMessage(
-          'Trellis is now git-ignored, but existing board files are still tracked. To untrack them, run: git rm -r --cached .agent-board'
+          'Trellis is now git-ignored, but existing board files are still tracked. To untrack them, run: git rm -r --cached .trellis'
         );
       }
     } catch {
@@ -162,6 +203,7 @@ export class AgentBoardStorage {
   }
 
   async loadBoardState(): Promise<{ board: AgentBoardFile; tasks: AgentBoardTask[]; project: ProjectContext }> {
+    await this.ensureStateDirectory();
     let tasks = await this.loadTasksOrEmpty();
     const archivedIds = selectMergedTasksToArchive(tasks);
     for (const id of archivedIds) {
@@ -501,7 +543,7 @@ export class AgentBoardStorage {
       '',
       seed ? `User intent: ${seed}` : 'User intent: complete the behavior described by the task title.',
       '',
-      'Before implementation, read .agent-board/project.json for project overview, rules, validation commands, and inferred repo context.',
+      'Before implementation, read .trellis/project.json for project overview, rules, validation commands, and inferred repo context.',
       '',
       'The agent should inspect the relevant code paths, make the smallest coherent implementation, update this task with changed files and implementation notes, and run the most relevant validation commands before handing off for QA.'
     ].join('\n');
@@ -581,7 +623,7 @@ export class AgentBoardStorage {
         'Do not overwrite unrelated user or agent changes.'
       ],
       agentRules: [
-        'Read .agent-board/project.json before claiming or implementing a task.',
+        'Read .trellis/project.json before claiming or implementing a task.',
         'Use project validationCommands when deciding what to run.',
         'Record any assumptions in the task activityLog or agentNotes.'
       ],
@@ -708,7 +750,7 @@ export class AgentBoardStorage {
   }
 
   private async readTopLevelDirs(): Promise<string[]> {
-    const ignored = new Set(['node_modules', 'dist', 'out', 'build', '.git', '.agent-board', '.vscode', '.github']);
+    const ignored = new Set(['node_modules', 'dist', 'out', 'build', '.git', '.trellis', '.vscode', '.github']);
     try {
       const entries = await vscode.workspace.fs.readDirectory(this.root);
       return entries

@@ -5,8 +5,8 @@ export const STANDARD_AGENT_PERMISSIONS = [
   'Bash(git commit:*)',
   'Bash(git merge:*)',
   'Bash(git worktree:*)',
-  'Bash(node .agent-board/scripts/*)',
-  'Bash(node */.agent-board/scripts/*)'
+  'Bash(node .trellis/scripts/*)',
+  'Bash(node */.trellis/scripts/*)'
 ] as const;
 
 export const CODEX_SCOPED_AUTOMATION_ARGS = ['--sandbox', 'workspace-write', '--ask-for-approval', 'never'] as const;
@@ -16,7 +16,7 @@ export function codexAutomationArgs(enabled: boolean, scope?: ClaudeAutomationSc
   const args: string[] = [...CODEX_SCOPED_AUTOMATION_ARGS];
   if (scope) {
     const mainRoot = scope.mainRoot.replace(/\/+$/, '');
-    const boardRoot = `${mainRoot}/.agent-board`;
+    const boardRoot = `${mainRoot}/.trellis`;
     args.push('--add-dir', `${mainRoot}/.git`, '--add-dir', `${boardRoot}/tasks`, '--add-dir', `${boardRoot}/locks`);
   }
   return args;
@@ -46,7 +46,7 @@ export function claudeAutomationArgs(
 ): string[] {
   if (!enabled) return [];
   const worktree = scope.worktreePath.replace(/\/+$/, '');
-  const taskRecord = `${scope.mainRoot.replace(/\/+$/, '')}/.agent-board/tasks/${scope.taskId}.json`;
+  const taskRecord = `${scope.mainRoot.replace(/\/+$/, '')}/.trellis/tasks/${scope.taskId}.json`;
   const safeManaged = managedAllowlist.filter((permission) => {
     if (!permission.startsWith('Bash(') || !permission.endsWith(')')) return false;
     return !UNSAFE_COMMAND.test(permission.slice(5, -1));

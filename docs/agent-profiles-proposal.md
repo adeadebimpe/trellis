@@ -23,7 +23,7 @@ quality -> code-qa -> Codex
 
 ## Proposed data model
 
-Add profiles to `.agent-board/project.json`, because they are project-level operating policy:
+Add profiles to `.trellis/project.json`, because they are project-level operating policy:
 
 ```json
 {
@@ -180,7 +180,7 @@ Profile instructions must not replace workflow rules. A profile cannot weaken wo
 - If a selected runtime is unavailable, try another runtime only when the profile runtime is `auto`.
 - Cap automatic build/QA repair cycles (recommended default: three). Exceeding the cap moves the task to Human Review with the accumulated evidence.
 - Deleting a profile must not invalidate task history; tasks retain the profile id and a snapshot name in activity entries.
-- Profile instructions are project code and should be reviewable in `.agent-board/project.json`.
+- Profile instructions are project code and should be reviewable in `.trellis/project.json`.
 
 ## Delivery plan
 

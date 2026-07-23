@@ -52,7 +52,7 @@ function blankTask(id, overrides = {}) {
 }
 
 function scaffoldBoard(root, tasks, projectOverrides = {}) {
-  const boardDir = join(root, '.agent-board');
+  const boardDir = join(root, '.trellis');
   for (const dir of ['tasks', 'scripts', 'locks', 'worktrees']) {
     mkdirSync(join(boardDir, dir), { recursive: true });
   }
@@ -84,11 +84,11 @@ function scaffoldBoard(root, tasks, projectOverrides = {}) {
 }
 
 function runScript(root, script, args, cwd = root) {
-  return spawnSync('node', [join(root, '.agent-board', 'scripts', script), ...args], { cwd, encoding: 'utf8', timeout: 60000 });
+  return spawnSync('node', [join(root, '.trellis', 'scripts', script), ...args], { cwd, encoding: 'utf8', timeout: 60000 });
 }
 
 function readTask(root, id) {
-  return JSON.parse(readFileSync(join(root, '.agent-board', 'tasks', `${id}.json`), 'utf8'));
+  return JSON.parse(readFileSync(join(root, '.trellis', 'tasks', `${id}.json`), 'utf8'));
 }
 
 function git(root, args) {
@@ -129,11 +129,11 @@ assert.ok(task1.claimId);
 assert.equal(task1.activeRun.surface, 'chat');
 assert.equal(task1.activeRun.phase, 'build');
 assert.equal(task1.activeRun.claimId, task1.claimId);
-assert.equal(task1.worktreePath, join(repo, '.agent-board', 'worktrees', 'TASK-001'));
+assert.equal(task1.worktreePath, join(repo, '.trellis', 'worktrees', 'TASK-001'));
 assert.equal(claimOutput.worktreePath, task1.worktreePath);
 assert.ok(existsSync(task1.worktreePath));
 assert.match(git(repo, ['worktree', 'list']), /agent-board\/TASK-001/);
-const worktreeCopy = JSON.parse(readFileSync(join(task1.worktreePath, '.agent-board', 'tasks', 'TASK-001.json'), 'utf8'));
+const worktreeCopy = JSON.parse(readFileSync(join(task1.worktreePath, '.trellis', 'tasks', 'TASK-001.json'), 'utf8'));
 assert.equal(worktreeCopy.status, 'ready-for-agent', 'task state must not leak into the worktree checkout');
 
 // A second session cannot re-claim an active build, even when it uses the same agent type.
@@ -145,7 +145,7 @@ result = runScript(repo, 'claim-task.mjs', ['TASK-006', 'claude']);
 assert.equal(result.status, 4, 'worktree creation failure must fail the claim');
 assert.equal(readTask(repo, 'TASK-006').status, 'ready-for-agent');
 assert.equal(readTask(repo, 'TASK-006').worktreePath, '');
-writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-006.json'), JSON.stringify({ ...readTask(repo, 'TASK-006'), status: 'backlog' }, null, 2));
+writeFileSync(join(repo, '.trellis', 'tasks', 'TASK-006.json'), JSON.stringify({ ...readTask(repo, 'TASK-006'), status: 'backlog' }, null, 2));
 
 // QA failure is only valid for an actively claimed QA run.
 result = runScript(repo, 'fail-qa.mjs', ['TASK-005', 'not actually in QA']);
@@ -218,7 +218,7 @@ assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(repo, 'TASK-002').status, 'failed-qa');
 
 // Locking: a fresh lock blocks the claim; a stale lock (>30s) is stolen.
-const lockDir = join(repo, '.agent-board', 'locks', 'TASK-003');
+const lockDir = join(repo, '.trellis', 'locks', 'TASK-003');
 mkdirSync(lockDir, { recursive: true });
 writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ owner: 'other-agent' }));
 result = runScript(repo, 'claim-task.mjs', ['TASK-003', 'claude']);
@@ -231,7 +231,7 @@ assert.equal(result.status, 0, `stale lock must be stolen: ${result.stderr}`);
 assert.equal(readTask(repo, 'TASK-003').status, 'building');
 
 // A stale-looking lock owned by a live process must not be stolen.
-const liveLockDir = join(repo, '.agent-board', 'locks', 'TASK-007');
+const liveLockDir = join(repo, '.trellis', 'locks', 'TASK-007');
 mkdirSync(liveLockDir, { recursive: true });
 writeFileSync(join(liveLockDir, 'owner.json'), JSON.stringify({ owner: 'live-agent', token: 'live-token', pid: process.pid }));
 utimesSync(liveLockDir, past, past);
@@ -239,7 +239,7 @@ result = runScript(repo, 'claim-task.mjs', ['TASK-007', 'claude']);
 assert.notEqual(result.status, 0, 'a live owner must retain a stale-looking lock');
 assert.match(result.stderr, /Could not lock/);
 await rm(liveLockDir, { recursive: true, force: true });
-writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-007.json'), JSON.stringify({ ...readTask(repo, 'TASK-007'), status: 'backlog' }, null, 2));
+writeFileSync(join(repo, '.trellis', 'tasks', 'TASK-007.json'), JSON.stringify({ ...readTask(repo, 'TASK-007'), status: 'backlog' }, null, 2));
 
 // claim-next picks the highest-priority ready task.
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
@@ -249,20 +249,20 @@ assert.equal(readTask(repo, 'TASK-004').status, 'building');
 assert.equal(readTask(repo, 'TASK-004').activeRun.surface, 'chat', 'script claims default to chat to avoid a surprise terminal');
 assert.equal(readTask(repo, 'TASK-005').status, 'ready-for-agent');
 
-writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-005.json'), JSON.stringify({ ...readTask(repo, 'TASK-005'), status: 'backlog' }, null, 2));
+writeFileSync(join(repo, '.trellis', 'tasks', 'TASK-005.json'), JSON.stringify({ ...readTask(repo, 'TASK-005'), status: 'backlog' }, null, 2));
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(JSON.parse(result.stdout).noTask, true);
 
 // Task IDs cannot escape the task directory.
-const projectBeforeTraversal = readFileSync(join(repo, '.agent-board', 'project.json'), 'utf8');
+const projectBeforeTraversal = readFileSync(join(repo, '.trellis', 'project.json'), 'utf8');
 result = runScript(repo, 'claim-task.mjs', ['../project', 'claude']);
 assert.equal(result.status, 1, 'path-traversing task IDs must be rejected');
 assert.match(result.stderr, /Invalid task ID/);
-assert.equal(readFileSync(join(repo, '.agent-board', 'project.json'), 'utf8'), projectBeforeTraversal);
+assert.equal(readFileSync(join(repo, '.trellis', 'project.json'), 'utf8'), projectBeforeTraversal);
 
 // claim-next validates the filename against the embedded ID before selecting work.
-writeFileSync(join(repo, '.agent-board', 'tasks', 'TASK-008.json'), JSON.stringify(blankTask('TASK-009', { status: 'ready-for-agent' }), null, 2));
+writeFileSync(join(repo, '.trellis', 'tasks', 'TASK-008.json'), JSON.stringify(blankTask('TASK-009', { status: 'ready-for-agent' }), null, 2));
 result = runScript(repo, 'claim-next-task.mjs', ['claude']);
 assert.equal(result.status, 0, 'a mismatched task file must not block healthy scheduling');
 assert.match(result.stderr, /\[SKIP\] TASK-008\.json.*does not match filename/);
@@ -286,14 +286,14 @@ scaffoldBoard(orchestration, [
   blankTask('TASK-003', { status: 'ready-for-agent', priority: 'low', readyAt: '2026-06-01T00:00:00.000Z', validationCommands: ['node -e "process.exit(0)"'] }),
   blankTask('TASK-004', { status: 'building', assignedAgent: 'codex', priority: 'low', claimedAt: '2026-06-01T00:00:00.000Z', lastUpdated: '2026-07-19T00:00:00.000Z', claimGeneration: 1 })
 ]);
-writeFileSync(join(orchestration, '.agent-board', 'project.json'), JSON.stringify({
+writeFileSync(join(orchestration, '.trellis', 'project.json'), JSON.stringify({
   version: 1,
   validationCommands: [],
   approvedValidationCommands: ['node -e "process.exit(0)"'],
   agentCapabilities: { codex: ['typescript'] },
   inference: { suggestedValidation: [] }
 }, null, 2));
-writeFileSync(join(orchestration, '.agent-board', 'tasks', 'TASK-005.json'), '{ malformed');
+writeFileSync(join(orchestration, '.trellis', 'tasks', 'TASK-005.json'), '{ malformed');
 
 result = runScript(orchestration, 'claim-next-task.mjs', ['codex']);
 assert.equal(result.status, 0, result.stderr);
@@ -316,7 +316,7 @@ assert.equal(result.status, 0, result.stderr);
 assert.ok(readTask(orchestration, 'TASK-004').leaseExpiresAt >= oldLease);
 
 const marker = join(orchestration, 'unapproved-command-ran');
-writeFileSync(join(orchestration, '.agent-board', 'tasks', 'TASK-003.json'), JSON.stringify({
+writeFileSync(join(orchestration, '.trellis', 'tasks', 'TASK-003.json'), JSON.stringify({
   ...readTask(orchestration, 'TASK-003'),
   validationCommands: [`node -e "require('fs').writeFileSync('${marker}', 'bad')"`]
 }, null, 2));
@@ -352,19 +352,19 @@ result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
 assert.equal(result.status, 5, 'direct mode must block a second active build');
 assert.equal(readTask(direct, 'TASK-002').status, 'ready-for-agent');
 
-writeFileSync(join(direct, '.agent-board', 'tasks', 'TASK-001.json'), JSON.stringify({ ...readTask(direct, 'TASK-001'), status: 'ready-for-qa' }, null, 2));
+writeFileSync(join(direct, '.trellis', 'tasks', 'TASK-001.json'), JSON.stringify({ ...readTask(direct, 'TASK-001'), status: 'ready-for-qa' }, null, 2));
 result = runScript(direct, 'start-qa.mjs', ['TASK-001', 'codex']);
 assert.equal(result.status, 0, result.stderr);
 result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
 assert.equal(result.status, 5, 'direct mode must also block a build while direct QA is active');
 
 // Changing the project mode only affects later claims.
-writeFileSync(join(direct, '.agent-board', 'project.json'), JSON.stringify({ workflowMode: 'branch-per-task', validationCommands: [] }, null, 2));
+writeFileSync(join(direct, '.trellis', 'project.json'), JSON.stringify({ workflowMode: 'branch-per-task', validationCommands: [] }, null, 2));
 result = runScript(direct, 'claim-task.mjs', ['TASK-002', 'codex']);
 assert.equal(result.status, 0, result.stderr);
 assert.equal(readTask(direct, 'TASK-001').workflowMode, 'direct-on-main');
 assert.equal(readTask(direct, 'TASK-002').workflowMode, 'branch-per-task');
-assert.ok(readTask(direct, 'TASK-002').worktreePath.includes('.agent-board/worktrees/TASK-002'));
+assert.ok(readTask(direct, 'TASK-002').worktreePath.includes('.trellis/worktrees/TASK-002'));
 
 for (const dir of cleanups) {
   await rm(dir, { recursive: true, force: true });
