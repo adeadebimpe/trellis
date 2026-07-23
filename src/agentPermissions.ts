@@ -17,6 +17,44 @@ export function codexAutomationArgs(enabled: boolean): string[] {
 
 const UNSAFE_COMMAND = /(^|(?:&&|\|\||;|\|)\s*)(?:sudo\s+)?(?:rm\b|git\s+(?:push\b|reset\s+--hard\b|clean\b)|(?:npm|pnpm|yarn)\s+publish\b)/i;
 
+export interface ClaudeAutomationScope {
+  worktreePath: string;
+  mainRoot: string;
+  taskId: string;
+}
+
+export function claudeAutomationArgs(
+  enabled: boolean,
+  managedAllowlist: string[],
+  scope: ClaudeAutomationScope
+): string[] {
+  if (!enabled) return [];
+  const worktree = scope.worktreePath.replace(/\/+$/, '');
+  const taskRecord = `${scope.mainRoot.replace(/\/+$/, '')}/.agent-board/tasks/${scope.taskId}.json`;
+  const safeManaged = managedAllowlist.filter((permission) => {
+    if (!permission.startsWith('Bash(') || !permission.endsWith(')')) return false;
+    return !UNSAFE_COMMAND.test(permission.slice(5, -1));
+  });
+  const allowedTools = [
+    `Read(${taskRecord})`,
+    `Edit(${taskRecord})`,
+    `Write(${taskRecord})`,
+    `Edit(${worktree}/**)`,
+    `Write(${worktree}/**)`,
+    ...safeManaged
+  ];
+  return ['--add-dir', scope.mainRoot, '--allowedTools', ...new Set(allowedTools)];
+}
+
+function posixQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function claudeLaunchCommand(promptPath: string, automationArgs: string[]): string {
+  const args = automationArgs.length ? ` ${automationArgs.map(posixQuote).join(' ')}` : '';
+  return `claude -p${args} "$(cat ${posixQuote(promptPath)})"`;
+}
+
 export function isSafeValidationCommand(command: string): boolean {
   const trimmed = command.trim();
   return Boolean(trimmed) && !trimmed.includes('\n') && !UNSAFE_COMMAND.test(trimmed);
