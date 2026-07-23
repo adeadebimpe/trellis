@@ -1,4 +1,5 @@
 .agent-board/**
+.trellis/**
 .claude/**
 .vscode/**
 dazzle/**
