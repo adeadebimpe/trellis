@@ -14,7 +14,7 @@ import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, Projec
 import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
 import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
 import { DEFAULT_WORKFLOW_PROMPTS } from './workflowPrompts';
-import { specialistAgentFileName, specialistAgentToml } from './specialists';
+import { isValidSpecialist, specialistAgentFileName, specialistAgentToml } from './specialists';
 import { branchNameValidationError } from './branchNames';
 
 const execFileAsync = promisify(execFile);
@@ -452,6 +452,9 @@ export class AgentBoardStorage {
 
   async saveProjectContext(project: ProjectContext): Promise<ProjectContext> {
     await this.prepareAgentFiles();
+    if (project.specialists?.some((specialist) => !isValidSpecialist(specialist))) {
+      throw new Error('Every specialist requires a name, description, instructions, and at least one workflow stage.');
+    }
     const existing = await this.loadProjectContext();
     const merged: ProjectContext = {
       ...existing,

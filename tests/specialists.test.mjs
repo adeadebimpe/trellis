@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 
 const outfile = '/private/tmp/agent-board-specialists.cjs';
 await build({ entryPoints: ['src/specialists.ts'], bundle: true, platform: 'node', format: 'cjs', outfile });
-const { appendSpecialistBrief, missingSpecialistIds, specialistAgentFileName, specialistAgentToml, specialistsForStage } = await import(outfile);
+const { appendSpecialistBrief, isValidSpecialist, missingSpecialistIds, specialistAgentFileName, specialistAgentToml, specialistValidationErrors, specialistsForStage } = await import(outfile);
 
 const design = { id: 'design', name: 'Design System', description: 'Checks UI consistency', instructions: 'Use tokens.', accessMode: 'read-only', stages: ['before-build', 'qa'] };
 const security = { id: 'security', name: 'Security', description: '', instructions: 'Do not use tokens.', accessMode: 'workspace-write', stages: ['post-build-review'] };
@@ -23,5 +23,12 @@ assert.match(brief, /must never broaden those inherited permissions/);
 assert.equal(specialistAgentFileName({ ...design, id: '../unsafe' }), 'trellis----unsafe.toml');
 assert.match(specialistAgentToml(design), /name = "Design System"/);
 assert.match(specialistAgentToml(design), /sandbox_mode = "read-only"/);
+assert.equal(isValidSpecialist(design), true);
+assert.deepEqual(specialistValidationErrors({ ...design, name: ' ', description: '', instructions: '', stages: [] }), {
+  name: 'Enter a name.',
+  description: 'Enter a description.',
+  instructions: 'Enter instructions.',
+  stages: 'Select at least one workflow stage.'
+});
 
 console.log('Specialist tests passed.');

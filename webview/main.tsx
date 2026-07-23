@@ -1609,6 +1609,11 @@ function App(): JSX.Element {
             <ListField label="Validation commands" value={projectDraft.validationCommands} onChange={(value) => updateProject({ ...projectDraft, validationCommands: splitLines(value) })} />
           </div>
 
+          <SpecialistManager
+            specialists={projectDraft.specialists ?? []}
+            onChange={(specialists) => updateProject({ ...projectDraft, specialists })}
+          />
+
           {projectDraft.inference?.lastInferred && (
             <section className="repoSummary" aria-labelledby="repo-summary-title">
               <div className="repoSummaryHeading">
@@ -1638,6 +1643,148 @@ function App(): JSX.Element {
         </>
       )}
     </main>
+  );
+}
+
+const specialistStages: Array<{ id: SpecialistStage; label: string }> = [
+  { id: 'before-build', label: 'Before Build' },
+  { id: 'post-build-review', label: 'Post-Build review' },
+  { id: 'qa', label: 'QA' }
+];
+
+type SpecialistErrors = Partial<Record<'name' | 'description' | 'instructions' | 'stages', string>>;
+
+function validateSpecialistDraft(specialist: Specialist): SpecialistErrors {
+  const errors: SpecialistErrors = {};
+  if (!specialist.name.trim()) errors.name = 'Enter a name.';
+  if (!specialist.description.trim()) errors.description = 'Enter a description.';
+  if (!specialist.instructions.trim()) errors.instructions = 'Enter instructions.';
+  if (!specialist.stages.length) errors.stages = 'Select at least one workflow stage.';
+  return errors;
+}
+
+function createSpecialistId(existing: Specialist[]): string {
+  const used = new Set(existing.map((specialist) => specialist.id));
+  let id = '';
+  do {
+    id = typeof crypto?.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `specialist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  } while (used.has(id));
+  return id;
+}
+
+function SpecialistManager({ specialists, onChange }: { specialists: Specialist[]; onChange: (specialists: Specialist[]) => void }): JSX.Element {
+  const [drafts, setDrafts] = useState<Specialist[]>(() => specialists.map((item) => ({ ...item, stages: [...item.stages] })));
+  const [errors, setErrors] = useState<Record<string, SpecialistErrors>>({});
+  const [removeId, setRemoveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDrafts(specialists.map((item) => ({ ...item, stages: [...item.stages] })));
+  }, [specialists]);
+
+  const edit = (id: string, patch: Partial<Specialist>) => {
+    const next = drafts.map((item) => item.id === id ? { ...item, ...patch } : item);
+    const specialist = next.find((item) => item.id === id)!;
+    const nextErrors = validateSpecialistDraft(specialist);
+    setDrafts(next);
+    setErrors((currentErrors) => ({ ...currentErrors, [id]: nextErrors }));
+    if (!Object.keys(nextErrors).length) {
+      onChange(specialists.some((item) => item.id === id)
+        ? specialists.map((item) => item.id === id ? specialist : item)
+        : [...specialists, specialist]);
+    }
+  };
+
+  const add = () => {
+    const specialist: Specialist = {
+      id: createSpecialistId(drafts),
+      name: '',
+      description: '',
+      instructions: '',
+      accessMode: 'read-only',
+      stages: []
+    };
+    setDrafts((current) => [...current, specialist]);
+    setErrors((current) => ({ ...current, [specialist.id]: validateSpecialistDraft(specialist) }));
+  };
+
+  const remove = (id: string) => {
+    setDrafts((current) => current.filter((item) => item.id !== id));
+    setErrors((current) => {
+      const copy = { ...current };
+      delete copy[id];
+      return copy;
+    });
+    if (specialists.some((item) => item.id === id)) {
+      onChange(specialists.filter((item) => item.id !== id));
+    }
+    setRemoveId(null);
+  };
+
+  return (
+    <section className="specialistManager" aria-labelledby="specialist-manager-title">
+      <div className="specialistManagerHeader">
+        <div>
+          <h3 id="specialist-manager-title">Specialists</h3>
+          <p>Create reusable advisors and choose when they join the workflow.</p>
+        </div>
+        <button className="ghost" onClick={add}><PlusIcon /> Add specialist</button>
+      </div>
+      {!drafts.length && <p className="fieldHint">No specialists configured. Build and QA continue normally.</p>}
+      <div className="specialistCards">
+        {drafts.map((specialist, index) => {
+          const itemErrors = errors[specialist.id] ?? {};
+          const fieldId = `specialist-${specialist.id}`;
+          return (
+            <article className="specialistCard" key={specialist.id}>
+              <div className="specialistCardTop">
+                <strong>{specialist.name.trim() || `New specialist ${index + 1}`}</strong>
+                <button className="dangerText" onClick={() => setRemoveId(specialist.id)} aria-label={`Remove ${specialist.name || 'new specialist'}`}>Remove</button>
+              </div>
+              <label htmlFor={`${fieldId}-name`}>Name</label>
+              <input id={`${fieldId}-name`} value={specialist.name} aria-invalid={Boolean(itemErrors.name)} aria-describedby={itemErrors.name ? `${fieldId}-name-error` : undefined} onChange={(event) => edit(specialist.id, { name: event.target.value })} />
+              {itemErrors.name && <span className="fieldError" id={`${fieldId}-name-error`}>{itemErrors.name}</span>}
+              <label htmlFor={`${fieldId}-description`}>Description</label>
+              <textarea id={`${fieldId}-description`} rows={2} value={specialist.description} aria-invalid={Boolean(itemErrors.description)} aria-describedby={itemErrors.description ? `${fieldId}-description-error` : undefined} onChange={(event) => edit(specialist.id, { description: event.target.value })} />
+              {itemErrors.description && <span className="fieldError" id={`${fieldId}-description-error`}>{itemErrors.description}</span>}
+              <label htmlFor={`${fieldId}-instructions`}>Instructions</label>
+              <textarea id={`${fieldId}-instructions`} rows={4} value={specialist.instructions} aria-invalid={Boolean(itemErrors.instructions)} aria-describedby={itemErrors.instructions ? `${fieldId}-instructions-error` : undefined} onChange={(event) => edit(specialist.id, { instructions: event.target.value })} />
+              {itemErrors.instructions && <span className="fieldError" id={`${fieldId}-instructions-error`}>{itemErrors.instructions}</span>}
+              <label htmlFor={`${fieldId}-access`}>Access mode</label>
+              <select id={`${fieldId}-access`} value={specialist.accessMode} onChange={(event) => edit(specialist.id, { accessMode: event.target.value as Specialist['accessMode'] })}>
+                <option value="read-only">Read only</option>
+                <option value="workspace-write">Workspace write</option>
+              </select>
+              <fieldset aria-describedby={itemErrors.stages ? `${fieldId}-stages-error` : undefined}>
+                <legend>Workflow stages</legend>
+                {specialistStages.map((stage) => (
+                  <label key={stage.id}>
+                    <input type="checkbox" checked={specialist.stages.includes(stage.id)} onChange={(event) => edit(specialist.id, {
+                      stages: event.target.checked ? [...specialist.stages, stage.id] : specialist.stages.filter((item) => item !== stage.id)
+                    })} />
+                    {stage.label}
+                  </label>
+                ))}
+              </fieldset>
+              {itemErrors.stages && <span className="fieldError" id={`${fieldId}-stages-error`}>{itemErrors.stages}</span>}
+            </article>
+          );
+        })}
+      </div>
+      {removeId && (
+        <div className="modalOverlay" role="presentation">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="remove-specialist-title">
+            <h3 id="remove-specialist-title">Remove specialist?</h3>
+            <p>This removes its Trellis-generated Codex agent file. Tasks using it will keep a removable missing-specialist reference.</p>
+            <div className="modalActions">
+              <button className="ghost" onClick={() => setRemoveId(null)}>Cancel</button>
+              <button className="danger" autoFocus onClick={() => remove(removeId)}>Remove specialist</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
