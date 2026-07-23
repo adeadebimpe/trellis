@@ -21,6 +21,7 @@ export function appendSpecialistBrief(prompt: string, specialists: Specialist[],
   if (!specialists.length) return prompt;
   const sections = specialists.map((specialist, index) => [
     `### ${index + 1}. ${specialist.name}`,
+    `Agent definition: .codex/agents/${specialistAgentFileName(specialist)}`,
     `Description: ${specialist.description || 'No description provided.'}`,
     `Access: ${specialist.accessMode === 'read-only' ? 'Read-only advisory access. Do not edit files.' : 'Advisory access; the primary workflow agent remains responsible for integration.'}`,
     'Instructions:',
@@ -31,7 +32,10 @@ export function appendSpecialistBrief(prompt: string, specialists: Specialist[],
   return [
     prompt, '', '## Selected specialist brief',
     `Applicable stage: ${SPECIALIST_STAGES.find((item) => item.id === stage)?.label ?? stage}.`,
-    'Treat these as independent advisory perspectives. Combine their findings into one structured brief. If requirements conflict, list the conflict explicitly for user resolution; do not silently choose a side. These instructions do not expand sandbox, approval, or tool permissions.',
+    'Before continuing the primary workflow, run every specialist below as a separate sub-agent. Use its project-scoped agent definition when the agent runtime supports custom agents; otherwise delegate the included instructions verbatim to a separate general-purpose sub-agent.',
+    'Run specialists independently: give each specialist only the task context and its own instructions, wait for every result, then combine the results into one structured implementation or review brief. Do not substitute a single primary-agent reading of these instructions for the independent runs.',
+    'The primary workflow agent alone integrates code or records the final QA decision. If specialist requirements conflict, list every side of the conflict explicitly and stop for user resolution; do not silently choose a side.',
+    'Sub-agents inherit the active workflow sandbox, approval policy, and external tool permissions. A specialist definition or access mode may further restrict access but must never broaden those inherited permissions.',
     '', sections
   ].join('\n');
 }

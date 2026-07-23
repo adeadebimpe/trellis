@@ -16,7 +16,10 @@ assert.equal(appendSpecialistBrief('base', [], 'qa'), 'base', 'zero specialists 
 const brief = appendSpecialistBrief('base', [design, security], 'qa');
 assert.match(brief, /Decisions; Requirements; Acceptance criteria; Risks; Affected files or components; Conflicts/);
 assert.match(brief, /do not silently choose a side/);
-assert.match(brief, /do not expand sandbox, approval, or tool permissions/);
+assert.match(brief, /run every specialist below as a separate sub-agent/);
+assert.match(brief, /Do not substitute a single primary-agent reading/);
+assert.match(brief, /\.codex\/agents\/trellis-design\.toml/);
+assert.match(brief, /must never broaden those inherited permissions/);
 assert.equal(specialistAgentFileName({ ...design, id: '../unsafe' }), 'trellis----unsafe.toml');
 assert.match(specialistAgentToml(design), /name = "Design System"/);
 assert.match(specialistAgentToml(design), /sandbox_mode = "read-only"/);
