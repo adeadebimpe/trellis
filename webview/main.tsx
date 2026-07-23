@@ -937,15 +937,19 @@ function App(): JSX.Element {
                           </>
                         )}
                       </span>
-                      <span
-                        className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
-                        title={workflowPercent[task.status] === 100 ? `${statusLabels[task.status]} task` : `${workflowPercent[task.status]}% through the Trellis workflow`}
-                        aria-label={workflowPercent[task.status] === 100 ? `${statusLabels[task.status]} task, workflow complete` : `${workflowPercent[task.status]} percent workflow progress`}
-                        style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
-                      >
-                        <i aria-hidden="true" />
-                        {workflowPercent[task.status] < 100 && <span>{workflowPercent[task.status]}%</span>}
-                      </span>
+                      {workflowPercent[task.status] < 100 ? (
+                        <span
+                          className={`workflowProgress${state?.liveTerminals?.includes(task.id) || generatingIds.includes(task.id) ? ' workflowProgressLive' : ''}`}
+                          title={`${workflowPercent[task.status]}% through the Trellis workflow`}
+                          aria-label={`${workflowPercent[task.status]} percent workflow progress`}
+                          style={{ '--workflow-progress': `${workflowPercent[task.status]}%` } as React.CSSProperties}
+                        >
+                          <i aria-hidden="true" />
+                          <span>{workflowPercent[task.status]}%</span>
+                        </span>
+                      ) : (
+                        <span className="screenReaderOnly">{statusLabels[task.status]} task, workflow complete</span>
+                      )}
                     </span>
                   </button>
                   );

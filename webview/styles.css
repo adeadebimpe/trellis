@@ -66,6 +66,16 @@ body.vscode-light {
   box-sizing: border-box;
 }
 
+.screenReaderOnly {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 body {
   margin: 0;
   /* VS Code injects default webview padding (0 20px); the board is full-bleed. */
