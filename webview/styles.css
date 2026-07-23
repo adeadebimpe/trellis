@@ -2069,6 +2069,54 @@ input.textInput {
   margin-top: 4px;
 }
 
+.workflowPromptSection {
+  border-top: 1px solid var(--border);
+  margin-top: 22px;
+  padding-top: 20px;
+}
+
+.workflowPromptIntro h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.workflowPromptIntro p {
+  line-height: 1.5;
+  margin: 0 0 7px;
+}
+
+.workflowPromptIntro code {
+  background: var(--input-bg);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 1px 4px;
+}
+
+.workflowPromptEditors {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.promptTemplateField {
+  display: grid;
+  gap: 5px;
+}
+
+.promptTemplateField small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.promptTemplateField textarea {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 180px;
+  resize: vertical;
+  width: 100%;
+}
+
 .repoScanTitle {
   color: var(--text);
   font-size: 11px;

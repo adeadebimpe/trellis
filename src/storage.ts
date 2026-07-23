@@ -13,6 +13,7 @@ import { assertTaskId, assertTaskLockKey } from './taskIds';
 import { AgentBoardFile, AgentBoardTask, AssignedAgent, IntakeAttachment, ProjectContext, ProjectInference, SaveTaskRequest, TaskStatus } from './types';
 import { ClaudeSettings, hasAgentPermissions, mergeAgentPermissions, removeAgentPermissions } from './agentPermissions';
 import { migratedWorktreePaths, stateDirectoryAction } from './stateMigration';
+import { DEFAULT_WORKFLOW_PROMPTS } from './workflowPrompts';
 
 const execFileAsync = promisify(execFile);
 
@@ -604,7 +605,14 @@ export class AgentBoardStorage {
       return this.defaultProjectContext();
     }
     await this.ensureProjectContext();
-    return this.readJson<ProjectContext>(this.projectUri());
+    const project = await this.readJson<ProjectContext>(this.projectUri());
+    return {
+      ...project,
+      workflowPrompts: {
+        ...DEFAULT_WORKFLOW_PROMPTS,
+        ...project.workflowPrompts
+      }
+    };
   }
 
   private async defaultProjectContext(): Promise<ProjectContext> {
@@ -630,6 +638,7 @@ export class AgentBoardStorage {
       validationCommands: [],
       approvedValidationCommands: [],
       agentCapabilities: {},
+      workflowPrompts: { ...DEFAULT_WORKFLOW_PROMPTS },
       designRules: [],
       glossary: [],
       inference: await this.buildProjectInference(),

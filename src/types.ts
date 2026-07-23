@@ -191,6 +191,11 @@ export interface ProjectContext {
   validationCommands: string[];
   approvedValidationCommands?: string[];
   agentCapabilities?: Partial<Record<'codex' | 'claude', string[]>>;
+  workflowPrompts?: {
+    implementation?: string;
+    qa?: string;
+    repair?: string;
+  };
   designRules: string[];
   glossary: string[];
   inference: ProjectInference;
