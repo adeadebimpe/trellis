@@ -112,7 +112,10 @@ scaffoldBoard(repo, [
   blankTask('TASK-004', { status: 'ready-for-agent', priority: 'high' }),
   blankTask('TASK-005', { status: 'ready-for-agent', priority: 'medium' }),
   blankTask('TASK-006', { status: 'ready-for-agent', branchName: 'invalid branch name' }),
-  blankTask('TASK-007', { status: 'ready-for-agent' })
+  blankTask('TASK-007', { status: 'ready-for-agent' }),
+  blankTask('TASK-008', { status: 'ready-for-agent', customBranchName: 'team/platform/TASK-008' }),
+  blankTask('TASK-009', { status: 'ready-for-agent', customBranchName: 'shared/name' }),
+  blankTask('TASK-010', { status: 'ready-for-agent', customBranchName: 'shared/name' })
 ]);
 git(repo, ['add', '-A']);
 git(repo, ['commit', '-q', '-m', 'fixture']);
@@ -146,6 +149,19 @@ assert.equal(result.status, 4, 'worktree creation failure must fail the claim');
 assert.equal(readTask(repo, 'TASK-006').status, 'ready-for-agent');
 assert.equal(readTask(repo, 'TASK-006').worktreePath, '');
 writeFileSync(join(repo, '.trellis', 'tasks', 'TASK-006.json'), JSON.stringify({ ...readTask(repo, 'TASK-006'), status: 'backlog' }, null, 2));
+
+result = runScript(repo, 'claim-task.mjs', ['TASK-008', 'claude']);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(readTask(repo, 'TASK-008').branchName, 'team/platform/TASK-008');
+assert.match(git(repo, ['branch', '--list', 'team/platform/TASK-008']), /team\/platform\/TASK-008/);
+
+result = runScript(repo, 'claim-task.mjs', ['TASK-009', 'claude']);
+assert.equal(result.status, 4);
+assert.match(result.stderr, /reserved by TASK-010/);
+assert.equal(readTask(repo, 'TASK-009').status, 'ready-for-agent');
+for (const id of ['TASK-009', 'TASK-010']) {
+  writeFileSync(join(repo, '.trellis', 'tasks', `${id}.json`), JSON.stringify({ ...readTask(repo, id), status: 'backlog' }, null, 2));
+}
 
 // QA failure is only valid for an actively claimed QA run.
 result = runScript(repo, 'fail-qa.mjs', ['TASK-005', 'not actually in QA']);

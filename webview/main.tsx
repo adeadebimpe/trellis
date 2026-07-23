@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { ArrowLeftIcon, ArrowUpIcon, AtSignIcon, BookmarkIcon, BugIcon, ChevronDownIcon, ChevronRightIcon, EllipsisVerticalIcon, FileTextIcon, LayoutGridIcon, LoaderPinwheelIcon, PlusCircleIcon, PlusIcon, PriorityIcon, SparklesIcon, TrellisLogo, XIcon } from './icons';
 import { PendingIntake, queueIntake, updateIntake } from './intakeState';
+import { branchNameValidationError, generatedTaskBranchName } from '../src/branchNames';
 
 type TaskStatus = 'backlog' | 'ready-for-agent' | 'building' | 'ready-for-qa' | 'qa-running' | 'failed-qa' | 'human-review' | 'done' | 'merged';
 type AssignedAgent = 'claude' | 'codex' | 'unassigned';
@@ -49,6 +50,7 @@ interface Task {
   comments?: TaskComment[];
   claimedBy: string;
   qaClaimedBy: string;
+  customBranchName?: string;
   branchName: string;
   worktreePath: string;
   claimedAt: string;
@@ -1278,6 +1280,41 @@ function App(): JSX.Element {
             </label>
           </div>
 
+          {(() => {
+            const customBranchName = draft.customBranchName ?? '';
+            const branchError = branchNameValidationError(customBranchName);
+            const branchLocked = draft.status !== 'backlog'
+              || Boolean(draft.branchName || draft.worktreePath || draft.claimedAt || state?.activeRuns?.[draft.id]);
+            const preview = generatedTaskBranchName(draft.id, draft.title);
+            return (
+              <section className="branchField">
+                <label htmlFor={`branch-name-${draft.id}`}>Branch name</label>
+                <input
+                  id={`branch-name-${draft.id}`}
+                  className={`textInput${branchError ? ' inputInvalid' : ''}`}
+                  value={customBranchName}
+                  placeholder={preview}
+                  readOnly={branchLocked}
+                  aria-invalid={Boolean(branchError)}
+                  aria-describedby={`branch-help-${draft.id}`}
+                  onChange={(event) => {
+                    const next = { ...draft, customBranchName: event.target.value };
+                    setDraft(next);
+                    if (!branchNameValidationError(event.target.value)) updateDraft(next);
+                  }}
+                />
+                <p id={`branch-help-${draft.id}`} className={branchError ? 'fieldError' : 'fieldHelp'} role={branchError ? 'alert' : undefined}>
+                  {branchError
+                    || (branchLocked
+                      ? `Locked after work began${draft.branchName ? ` · ${draft.branchName}` : ''}.`
+                      : customBranchName
+                        ? 'Trellis will create this exact branch when the task is claimed.'
+                        : `Generated default: ${preview}`)}
+                </p>
+              </section>
+            );
+          })()}
+
           {!transientDraftRef.current && <div className="actions">
             {draft.status === 'backlog' && (
               <Action
@@ -1953,6 +1990,7 @@ function blankDraft(): Task {
     comments: [],
     claimedBy: '',
     qaClaimedBy: '',
+    customBranchName: '',
     branchName: '',
     worktreePath: '',
     claimedAt: '',

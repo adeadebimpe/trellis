@@ -109,6 +109,7 @@ export interface AgentBoardTask {
   comments?: TaskComment[];
   claimedBy: string;
   qaClaimedBy: string;
+  customBranchName?: string;
   branchName: string;
   worktreePath: string;
   claimedAt: string;

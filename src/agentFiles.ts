@@ -64,7 +64,7 @@ export function boardLibScript(): string {
 // git worktree's .trellis/, no matter which worktree a script runs from.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
@@ -297,7 +297,7 @@ export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task')
     const warning = dirtyCount ? 'Main has ' + dirtyCount + ' uncommitted file(s). Review them before the agent starts.' : '';
     return { branchName: '', worktreePath: mainRoot, warning, message: 'Claimed task in direct-on-main mode.' + (warning ? ' Warning: ' + warning : '') };
   }
-  const branchName = task.branchName || 'agent-board/' + task.id + '-' + slug(task.title);
+  const branchName = task.branchName || task.customBranchName || 'agent-board/' + task.id + '-' + slug(task.title);
   if (!isGitRepo(mainRoot)) {
     return { branchName, worktreePath: '', message: 'Claimed task. No worktree was created because this folder is not a Git repository.' };
   }
@@ -319,6 +319,20 @@ export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task')
     const worktreePath = expectedPath;
     const baseSha = git(['rev-parse', 'HEAD'], mainRoot);
     mkdirSync(join(mainRoot, '.trellis', 'worktrees'), { recursive: true });
+    if (!task.branchName) {
+      try {
+        git(['check-ref-format', '--branch', branchName], mainRoot);
+      } catch {
+        throw new Error('Invalid branch name “' + branchName + '”. Edit it in Backlog before claiming the task.');
+      }
+      for (const name of readdirSync(join(mainRoot, '.trellis', 'tasks'))) {
+        if (!name.endsWith('.json')) continue;
+        const other = JSON.parse(readFileSync(join(mainRoot, '.trellis', 'tasks', name), 'utf8'));
+        if (other.id !== task.id && other.status !== 'merged' && (other.customBranchName === branchName || other.branchName === branchName)) {
+          throw new Error('Branch name “' + branchName + '” is reserved by ' + other.id + '. Choose another name in Backlog.');
+        }
+      }
+    }
     let branchExists = true;
     try {
       git(['rev-parse', '--verify', 'refs/heads/' + branchName], mainRoot);
@@ -326,6 +340,9 @@ export function ensureWorktree(mainRoot, task, workflowMode = 'branch-per-task')
       branchExists = false;
     }
     if (branchExists) {
+      if (!task.branchName) {
+        throw new Error('A local branch named “' + branchName + '” already exists. Choose another name in Backlog.');
+      }
       git(['worktree', 'add', worktreePath, branchName], mainRoot);
       return { branchName, worktreePath, baseSha, message: 'Created worktree at ' + worktreePath + ' on existing branch ' + branchName + '.' };
     }
