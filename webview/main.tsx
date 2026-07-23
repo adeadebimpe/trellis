@@ -928,7 +928,7 @@ function App(): JSX.Element {
                       <span className="phaseTags">
                         {activeRun ? (
                           <span className={`phaseTag agent-${activeRun.agent}`}>
-                            <b>{activeRun.phase === 'qa' ? 'QA' : 'Build'}</b>{activeRun.agent} · {activeRun.surface === 'chat' ? 'Chat' : 'Terminal'}
+                            <b>{activeRun.phase === 'qa' ? 'QA' : 'Build'}</b>{activeRun.agent}
                           </span>
                         ) : (
                           <>
