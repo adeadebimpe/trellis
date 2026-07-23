@@ -23,13 +23,23 @@ assert.match(
 );
 assert.match(
   extensionSource,
-  /async resolveWebviewView\(view: vscode\.WebviewView\)[\s\S]*?await storage\.prepareAgentFiles\(\);\s+await postState\(\);/,
-  'opening the sidebar explicitly initializes Trellis'
+  /async resolveWebviewView\(view: vscode\.WebviewView\)[\s\S]*?await postState\(\);\s+void prepareWorkspaceAfterStartup\(storage\);/,
+  'opening the sidebar posts state before optional workspace preparation'
 );
 assert.match(
   extensionSource,
-  /async function openBoard[\s\S]*?await storage\.prepareAgentFiles\(\);/,
-  'opening the full board explicitly initializes Trellis'
+  /async function openBoard[\s\S]*?await postState\(\);\s+void prepareWorkspaceAfterStartup\(storage\);/,
+  'opening the full board posts state before optional workspace preparation'
+);
+assert.doesNotMatch(
+  extensionSource,
+  /async function postState[\s\S]*?await detectAvailableAgents\(\);[\s\S]*?webview\.postMessage\(message\);/,
+  'the first board state does not wait for agent CLI detection'
+);
+assert.match(
+  extensionSource,
+  /webview\.postMessage\(message\);[\s\S]*?void detectAvailableAgents\(\)\.then\(\(\) => postState\(\)/,
+  'agent capabilities refresh after the first board state is posted'
 );
 assert.doesNotMatch(
   storageSource,
