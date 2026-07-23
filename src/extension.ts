@@ -9,8 +9,8 @@ import { shipTask } from './ship';
 import { deriveTaskTitle, getPrdSourceBrief } from './prdPrompt';
 import { AgentBoardStorage, getWorkspaceStorage, StaleTaskError } from './storage';
 import { AgentBoardTask, AssignedAgent } from './types';
-import { buildAgentPermissionAllowlist, codexAutomationArgs } from './agentPermissions';
-import { shouldStartAutomaticQa } from './agentHandoff';
+import { buildAgentPermissionAllowlist, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
+import { isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership } from './agentHandoff';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -21,6 +21,7 @@ const ONBOARDING_COMPLETE_KEY = 'agentBoard.onboardingComplete';
 const PERMISSION_DECISION_KEY = 'agentBoard.agentPermissionDecisionMade';
 const MANAGED_PERMISSIONS_KEY = 'agentBoard.managedClaudePermissions';
 const SCOPED_AUTOMATION_KEY = 'agentBoard.scopedAutomationEnabled';
+const TERMINAL_OWNERSHIP_KEY = 'agentBoard.terminalOwnership';
 const execFileAsync = promisify(execFile);
 
 type AgentKind = 'build' | 'qa';
@@ -657,7 +658,13 @@ async function runStartBuildAction(id: string): Promise<void> {
     vscode.window.showWarningMessage(claimed.claimWarning);
   }
   const prompt = buildImplementationPrompt(id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
-  await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
+  await setTerminalOwnership(id, claimed.claimId, 'build');
+  try {
+    await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
+  } catch (error) {
+    await clearTerminalOwnership(id);
+    throw error;
+  }
   void vscode.window.showInformationMessage(`${agentLabel(agent)} started building ${id} in a terminal.`, 'Show terminal').then((choice) => {
     if (choice === 'Show terminal') {
       agentTerminals.get(id)?.terminal.show();
@@ -680,7 +687,13 @@ async function runStartQaAction(id: string): Promise<void> {
   await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/start-qa.mjs', id, agent]);
   const started = findTask((await storage.loadBoardState()).tasks, id);
   const prompt = buildQaPrompt(id, storage.root.fsPath, started.worktreePath, started.branchName);
-  await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
+  await setTerminalOwnership(id, started.qaClaimId, 'qa');
+  try {
+    await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
+  } catch (error) {
+    await clearTerminalOwnership(id);
+    throw error;
+  }
   void vscode.window.showInformationMessage(`${agentLabel(agent)} started QA for ${id} in a terminal.`, 'Show terminal').then((choice) => {
     if (choice === 'Show terminal') {
       agentTerminals.get(id)?.terminal.show();
@@ -712,6 +725,26 @@ function requireAgent(agent: AssignedAgent, message: string): Exclude<AssignedAg
     return agent;
   }
   throw new Error(message);
+}
+
+function terminalOwnership(): Record<string, TerminalOwnership> {
+  return activeContext?.workspaceState.get<Record<string, TerminalOwnership>>(TERMINAL_OWNERSHIP_KEY) ?? {};
+}
+
+async function setTerminalOwnership(taskId: string, claimId: string | undefined, phase: AgentKind): Promise<void> {
+  if (!activeContext || !claimId) return;
+  await activeContext.workspaceState.update(TERMINAL_OWNERSHIP_KEY, {
+    ...terminalOwnership(),
+    [taskId]: { claimId, phase }
+  });
+}
+
+async function clearTerminalOwnership(taskId: string): Promise<void> {
+  if (!activeContext) return;
+  const ownership = terminalOwnership();
+  if (!ownership[taskId]) return;
+  delete ownership[taskId];
+  await activeContext.workspaceState.update(TERMINAL_OWNERSHIP_KEY, ownership);
 }
 
 async function ensureAgentCliAvailable(agent: Exclude<AssignedAgent, 'unassigned'>): Promise<void> {
@@ -793,8 +826,7 @@ function agentLaunchCommand(agent: Exclude<AssignedAgent, 'unassigned'>, promptP
   if (agent === 'claude') {
     return `claude -p "$(cat ${shellQuote(promptPath)})"`;
   }
-  const scopedArgs = codexAutomationArgs(Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)));
-  return `codex exec --skip-git-repo-check${scopedArgs.length ? ` ${scopedArgs.join(' ')}` : ''} "$(cat ${shellQuote(promptPath)})"`;
+  return codexLaunchCommand(promptPath, Boolean(activeContext?.workspaceState.get<boolean>(SCOPED_AUTOMATION_KEY)));
 }
 
 function buildImplementationPrompt(id: string, mainRoot: string, worktreePath: string, branchName: string, agent: CliAgent): string {
@@ -898,6 +930,7 @@ function scheduleRefresh(): void {
 }
 
 async function refreshBoard(): Promise<void> {
+  await pruneTerminalOwnership();
   await startReadyQaTasks();
   await startFailedQaRepairs();
   await startReadyBuildTasks();
@@ -938,7 +971,8 @@ async function startReadyBuildTasks(): Promise<void> {
 async function startReadyQaTasks(): Promise<void> {
   const storage = await resolveStorage();
   const { tasks } = await storage.loadBoardState();
-  const ready = tasks.filter((task) => shouldStartAutomaticQa(
+  const ownership = terminalOwnership();
+  const ready = tasks.filter((task) => isTerminalOwnedHandoff(ownership[task.id], task.claimId, 'build') && shouldStartAutomaticQa(
     task.status,
     agentTerminals.get(task.id)?.kind,
     autoQaStarting.has(task.id),
@@ -963,8 +997,10 @@ async function startReadyQaTasks(): Promise<void> {
 async function startFailedQaRepairs(): Promise<void> {
   const storage = await resolveStorage();
   const { tasks } = await storage.loadBoardState();
+  const ownership = terminalOwnership();
   const failed = tasks.filter((task) =>
     task.status === 'failed-qa'
+    && isTerminalOwnedHandoff(ownership[task.id], task.qaClaimId, 'qa')
     && agentTerminals.get(task.id)?.kind !== 'build'
     && !autoRepairStarting.has(task.id)
     && autoRepairAttemptedVersions.get(task.id) !== task.lastUpdated
@@ -991,7 +1027,13 @@ async function startFailedQaRepairs(): Promise<void> {
       await runAgentBoardScript(storage.root.fsPath, ['.agent-board/scripts/claim-task.mjs', task.id, agent]);
       const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
       const prompt = buildRepairPrompt(task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
-      await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
+      await setTerminalOwnership(task.id, repairing.claimId, 'build');
+      try {
+        await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
+      } catch (error) {
+        await clearTerminalOwnership(task.id);
+        throw error;
+      }
       vscode.window.showInformationMessage(`${agentLabel(agent)} started repairing QA feedback for ${task.id}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1000,6 +1042,23 @@ async function startFailedQaRepairs(): Promise<void> {
       autoRepairStarting.delete(task.id);
     }
   }));
+}
+
+async function pruneTerminalOwnership(): Promise<void> {
+  if (!activeContext) return;
+  const ownership = terminalOwnership();
+  if (!Object.keys(ownership).length) return;
+  const tasks = (await resolveStorage()).loadBoardState().then((state) => state.tasks);
+  const activeTasks = new Map((await tasks).map((task) => [task.id, task]));
+  let changed = false;
+  for (const taskId of Object.keys(ownership)) {
+    const task = activeTasks.get(taskId);
+    if (!task || ['human-review', 'done', 'merged'].includes(task.status)) {
+      delete ownership[taskId];
+      changed = true;
+    }
+  }
+  if (changed) await activeContext.workspaceState.update(TERMINAL_OWNERSHIP_KEY, ownership);
 }
 
 async function postState(): Promise<void> {

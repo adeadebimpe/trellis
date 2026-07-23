@@ -15,6 +15,15 @@ export function codexAutomationArgs(enabled: boolean): string[] {
   return enabled ? [...CODEX_SCOPED_AUTOMATION_ARGS] : [];
 }
 
+function posixQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function codexLaunchCommand(promptPath: string, scopedAutomation: boolean): string {
+  const globalArgs = codexAutomationArgs(scopedAutomation);
+  return `codex${globalArgs.length ? ` ${globalArgs.join(' ')}` : ''} exec --skip-git-repo-check "$(cat ${posixQuote(promptPath)})"`;
+}
+
 const UNSAFE_COMMAND = /(^|(?:&&|\|\||;|\|)\s*)(?:sudo\s+)?(?:rm\b|git\s+(?:push\b|reset\s+--hard\b|clean\b)|(?:npm|pnpm|yarn)\s+publish\b)/i;
 
 export function isSafeValidationCommand(command: string): boolean {
