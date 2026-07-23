@@ -108,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(
       'agentBoard.boardView',
       {
-        resolveWebviewView(view: vscode.WebviewView) {
+        async resolveWebviewView(view: vscode.WebviewView) {
           sidebarView = view;
           view.webview.options = {
             enableScripts: true,
@@ -119,6 +119,9 @@ export function activate(context: vscode.ExtensionContext): void {
             sidebarView = undefined;
           });
           view.webview.onDidReceiveMessage((message) => handleWebviewMessage(context, view.webview, message));
+          const storage = await resolveStorage();
+          await storage.prepareAgentFiles();
+          await postState();
         }
       },
       { webviewOptions: { retainContextWhenHidden: true } }
@@ -1108,6 +1111,10 @@ function scheduleRefresh(): void {
 }
 
 async function refreshBoard(): Promise<void> {
+  const storage = await resolveStorage();
+  if (!await storage.isInitialized()) {
+    return;
+  }
   await pruneTerminalOwnership();
   await startReadyQaTasks();
   await startFailedQaRepairs();
