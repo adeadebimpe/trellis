@@ -123,9 +123,13 @@ export function activate(context: vscode.ExtensionContext): void {
             sidebarView = undefined;
           });
           view.webview.onDidReceiveMessage((message) => handleWebviewMessage(context, view.webview, message));
-          const storage = await resolveStorage();
-          await storage.prepareAgentFiles();
-          await postState();
+          try {
+            const storage = await resolveStorage();
+            await storage.prepareAgentFiles();
+            await postState();
+          } catch (error) {
+            reportWebviewBootstrapError(view.webview, error);
+          }
         }
       },
       { webviewOptions: { retainContextWhenHidden: true } }
@@ -267,11 +271,15 @@ export function deactivate(): void {
 
 async function openBoard(context: vscode.ExtensionContext): Promise<void> {
   const storage = await resolveStorage();
-  await storage.prepareAgentFiles();
 
   if (panel) {
     panel.reveal(vscode.ViewColumn.One);
-    await postState();
+    try {
+      await storage.prepareAgentFiles();
+      await postState();
+    } catch (error) {
+      reportWebviewBootstrapError(panel.webview, error);
+    }
     return;
   }
 
@@ -289,7 +297,19 @@ async function openBoard(context: vscode.ExtensionContext): Promise<void> {
   const webview = panel.webview;
   webview.onDidReceiveMessage((message) => handleWebviewMessage(context, webview, message));
 
-  await postState();
+  try {
+    await storage.prepareAgentFiles();
+    await postState();
+  } catch (error) {
+    reportWebviewBootstrapError(webview, error);
+  }
+}
+
+function reportWebviewBootstrapError(webview: vscode.Webview, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  diagnostics.appendLine(`[${new Date().toISOString()}] Board initialization failed: ${message}`);
+  console.error('Trellis: board initialization failed', error);
+  void webview.postMessage({ type: 'error', message });
 }
 
 async function handleWebviewMessage(context: vscode.ExtensionContext, webview: vscode.Webview, message: any): Promise<void> {
