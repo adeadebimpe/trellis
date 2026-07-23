@@ -9,6 +9,15 @@ type AssignedAgent = 'claude' | 'codex' | 'unassigned';
 type Priority = 'high' | 'medium' | 'low';
 type IntakeIntent = 'single-task' | 'decompose' | 'define' | 'investigate';
 type WorkflowMode = 'branch-per-task' | 'direct-on-main';
+type SpecialistStage = 'before-build' | 'post-build-review' | 'qa';
+interface Specialist {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  accessMode: 'read-only' | 'workspace-write';
+  stages: SpecialistStage[];
+}
 type IntakeFile = { key: string; name: string; path?: string; mediaType?: string; base64?: string };
 
 interface ActivityEntry {
@@ -42,6 +51,7 @@ interface Task {
   validationCommands: string[];
   relevantFiles: string[];
   constraints: string[];
+  specialistIds?: string[];
   agentNotes: string;
   qaNotes: ActivityEntry[];
   qaEvidence: string[];
@@ -99,6 +109,7 @@ interface ProjectContext {
     qa?: string;
     repair?: string;
   };
+  specialists?: Specialist[];
   designRules: string[];
   glossary: string[];
   inference: {
@@ -1283,6 +1294,36 @@ function App(): JSX.Element {
             </label>
           </div>
 
+          <section className="specialistPicker" aria-labelledby="task-specialists-title">
+            <h3 id="task-specialists-title">Specialists <span className="optionalLabel">Optional</span></h3>
+            {(state?.project.specialists ?? []).length ? (
+              <div className="specialistChoices">
+                {(state?.project.specialists ?? []).map((specialist) => (
+                  <label className="specialistChoice" key={specialist.id}>
+                    <input
+                      type="checkbox"
+                      checked={(draft.specialistIds ?? []).includes(specialist.id)}
+                      onChange={(event) => {
+                        const selected = draft.specialistIds ?? [];
+                        const specialistIds = event.target.checked
+                          ? [...selected, specialist.id]
+                          : selected.filter((id) => id !== specialist.id);
+                        saveDraftNow({ ...draft, specialistIds });
+                      }}
+                    />
+                    <span><strong>{specialist.name}</strong><small>{specialist.stages.map(stageLabel).join(' · ')}</small></span>
+                  </label>
+                ))}
+              </div>
+            ) : <p className="fieldHint">No specialists attached. The normal Build and QA workflow will run unchanged.</p>}
+            {(draft.specialistIds ?? []).filter((id) => !(state?.project.specialists ?? []).some((specialist) => specialist.id === id)).map((id) => (
+              <div className="missingSpecialist" role="status" key={id}>
+                Missing specialist ({id})
+                <button className="ghost" onClick={() => saveDraftNow({ ...draft, specialistIds: (draft.specialistIds ?? []).filter((item) => item !== id) })}>Remove reference</button>
+              </div>
+            ))}
+          </section>
+
           {!transientDraftRef.current && <div className="actions">
             {draft.status === 'backlog' && (
               <Action
@@ -1548,6 +1589,56 @@ function App(): JSX.Element {
               <p className="fieldHint">Used by QA runs, one per line.</p>
             </div>
           </div>
+
+          <section className="specialistManager" aria-labelledby="specialists-title">
+            <div className="specialistManagerHeader">
+              <div>
+                <h3 id="specialists-title">Task specialists</h3>
+                <p>Create reusable advisory roles, then opt tasks into the stages where their perspective is useful.</p>
+              </div>
+              <button className="ghost" onClick={() => {
+                const specialist: Specialist = {
+                  id: `specialist-${Date.now().toString(36)}`,
+                  name: 'New specialist',
+                  description: '',
+                  instructions: '',
+                  accessMode: 'read-only',
+                  stages: ['before-build']
+                };
+                updateProject({ ...projectDraft, specialists: [...(projectDraft.specialists ?? []), specialist] });
+              }}>Add specialist</button>
+            </div>
+            {(projectDraft.specialists ?? []).length === 0 && <p className="fieldHint">Specialists are optional. Tasks without one use the normal workflow with no extra steps.</p>}
+            <div className="specialistCards">
+              {(projectDraft.specialists ?? []).map((specialist) => {
+                const replace = (patch: Partial<Specialist>) => updateProject({
+                  ...projectDraft,
+                  specialists: (projectDraft.specialists ?? []).map((item) => item.id === specialist.id ? { ...item, ...patch } : item)
+                });
+                return (
+                  <article className="specialistCard" key={specialist.id}>
+                    <div className="specialistCardTop">
+                      <input aria-label="Specialist name" value={specialist.name} onChange={(event) => replace({ name: event.target.value })} />
+                      <button className="dangerText" aria-label={`Remove ${specialist.name}`} onClick={() => updateProject({ ...projectDraft, specialists: (projectDraft.specialists ?? []).filter((item) => item.id !== specialist.id) })}>Remove</button>
+                    </div>
+                    <input aria-label={`${specialist.name} description`} placeholder="Short description" value={specialist.description} onChange={(event) => replace({ description: event.target.value })} />
+                    <textarea aria-label={`${specialist.name} detailed instructions`} placeholder="Detailed instructions, requirements, and review focus…" rows={5} value={specialist.instructions} onChange={(event) => replace({ instructions: event.target.value })} />
+                    <label>Access
+                      <select value={specialist.accessMode} onChange={(event) => replace({ accessMode: event.target.value as Specialist['accessMode'] })}>
+                        <option value="read-only">Read-only advisory</option>
+                        <option value="workspace-write">Workspace-write advisory</option>
+                      </select>
+                    </label>
+                    <fieldset><legend>Workflow stages</legend>
+                      {(['before-build', 'post-build-review', 'qa'] as SpecialistStage[]).map((stage) => (
+                        <label key={stage}><input type="checkbox" checked={specialist.stages.includes(stage)} onChange={(event) => replace({ stages: event.target.checked ? [...specialist.stages, stage] : specialist.stages.filter((item) => item !== stage) })} />{stageLabel(stage)}</label>
+                      ))}
+                    </fieldset>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
 
           <section className="workflowPromptSection" aria-labelledby="workflow-prompts-title">
             <div className="workflowPromptIntro">
@@ -1990,6 +2081,7 @@ function blankDraft(): Task {
     validationCommands: [],
     relevantFiles: [],
     constraints: [],
+    specialistIds: [],
     agentNotes: '',
     qaNotes: [],
     qaEvidence: [],
@@ -2004,6 +2096,10 @@ function blankDraft(): Task {
     shipResult: null,
     lastUpdated: ''
   };
+}
+
+function stageLabel(stage: SpecialistStage): string {
+  return stage === 'before-build' ? 'Before Build' : stage === 'post-build-review' ? 'Post-Build review' : 'QA';
 }
 
 function isMeaningfulBlankDraft(task: Task): boolean {

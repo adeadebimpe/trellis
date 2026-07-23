@@ -2075,6 +2075,28 @@ input.textInput {
   padding-top: 20px;
 }
 
+.specialistPicker, .specialistManager {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+}
+.specialistPicker h3, .specialistManager h3 { margin: 0; }
+.optionalLabel { font-size: 11px; font-weight: 400; opacity: .65; }
+.specialistChoices, .specialistCards { display: grid; gap: 8px; margin-top: 10px; }
+.specialistChoice { display: flex; gap: 9px; align-items: flex-start; }
+.specialistChoice span { display: grid; }
+.specialistChoice small { opacity: .7; margin-top: 2px; }
+.missingSpecialist { margin-top: 8px; padding: 8px; border-left: 3px solid var(--vscode-editorWarning-foreground); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.specialistManagerHeader, .specialistCardTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.specialistManagerHeader p { margin: 5px 0 0; opacity: .75; }
+.specialistCard { display: grid; gap: 10px; padding: 14px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); border-radius: 7px; }
+.specialistCard input:not([type="checkbox"]), .specialistCard textarea, .specialistCard select { box-sizing: border-box; width: 100%; padding: 7px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); }
+.specialistCard fieldset { border: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.specialistCard legend { margin-bottom: 6px; }
+.specialistCard fieldset label { display: flex; gap: 5px; }
+.dangerText { color: var(--vscode-errorForeground); border: 0; background: transparent; cursor: pointer; }
+
 .workflowPromptIntro h3 {
   font-size: 15px;
   margin: 0 0 6px;

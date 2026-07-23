@@ -13,6 +13,7 @@ import { AgentBoardTask, AssignedAgent } from './types';
 import { buildAgentPermissionAllowlist, claudeAutomationArgs, claudeLaunchCommand, codexAutomationArgs, codexLaunchCommand } from './agentPermissions';
 import { canRetryMissingBuildTerminal, isTerminalOwnedHandoff, shouldStartAutomaticQa, TerminalOwnership, terminalStartBlockReason } from './agentHandoff';
 import { renderWorkflowPrompt, WorkflowPromptKind } from './workflowPrompts';
+import { appendSpecialistBrief, specialistsForStage } from './specialists';
 
 let panel: vscode.WebviewPanel | undefined;
 let sidebarView: vscode.WebviewView | undefined;
@@ -774,7 +775,11 @@ async function runStartBuildAction(id: string): Promise<void> {
   if (claimed.claimWarning) {
     vscode.window.showWarningMessage(claimed.claimWarning);
   }
-  const prompt = buildWorkflowPrompt('implementation', state.project.workflowPrompts?.implementation, id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent);
+  const prompt = appendSpecialistBrief(
+    buildWorkflowPrompt('implementation', state.project.workflowPrompts?.implementation, id, storage.root.fsPath, claimed.worktreePath, claimed.branchName, agent),
+    specialistsForStage(state.project, claimed, 'before-build'),
+    'before-build'
+  );
   await setTerminalOwnership(id, claimed.claimId, 'build');
   try {
     await launchAgentTerminal(storage, id, 'build', agent, prompt, claimed.worktreePath, claimed.branchName);
@@ -827,7 +832,12 @@ async function runStartQaAction(id: string): Promise<void> {
   await ensureAgentCliAvailable(agent);
   await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/start-qa.mjs', id, agent, 'terminal']);
   const started = findTask((await storage.loadBoardState()).tasks, id);
-  const prompt = buildWorkflowPrompt('qa', state.project.workflowPrompts?.qa, id, storage.root.fsPath, started.worktreePath, started.branchName, agent);
+  const reviewers = specialistsForStage(state.project, started, 'post-build-review');
+  const prompt = appendSpecialistBrief(
+    buildWorkflowPrompt('qa', state.project.workflowPrompts?.qa, id, storage.root.fsPath, started.worktreePath, started.branchName, agent),
+    [...reviewers, ...specialistsForStage(state.project, started, 'qa').filter((item) => !reviewers.some((reviewer) => reviewer.id === item.id))],
+    'qa'
+  );
   await setTerminalOwnership(id, started.qaClaimId, 'qa');
   try {
     await launchAgentTerminal(storage, id, 'qa', agent, prompt, started.worktreePath, started.branchName);
@@ -1231,7 +1241,11 @@ async function startFailedQaRepairs(): Promise<void> {
     await runAgentBoardScript(storage.root.fsPath, ['.trellis/scripts/claim-task.mjs', task.id, agent, 'terminal']);
     const repairing = findTask((await storage.loadBoardState()).tasks, task.id);
     const project = (await storage.loadBoardState()).project;
-    const prompt = buildWorkflowPrompt('repair', project.workflowPrompts?.repair, task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent);
+    const prompt = appendSpecialistBrief(
+      buildWorkflowPrompt('repair', project.workflowPrompts?.repair, task.id, storage.root.fsPath, repairing.worktreePath, repairing.branchName, agent),
+      specialistsForStage(project, repairing, 'post-build-review'),
+      'post-build-review'
+    );
     await setTerminalOwnership(task.id, repairing.claimId, 'build');
     try {
       await launchAgentTerminal(storage, task.id, 'build', agent, prompt, repairing.worktreePath, repairing.branchName);
