@@ -1687,10 +1687,12 @@ body[data-host='panel'] .detailPage.projectPage {
 }
 
 .branchField {
-  margin: -4px 0 18px;
+  display: grid;
+  gap: 6px;
 }
 
 .branchField input {
+  box-sizing: border-box;
   font-family: var(--mono-font);
   width: 100%;
 }
@@ -1795,6 +1797,50 @@ body[data-host='panel'] .detailPage.projectPage {
 .propValue:has(.propSelect:focus-visible) {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
+}
+
+.specialistProperty {
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.specialistProperty:hover,
+.specialistProperty[open] {
+  background: var(--badge-bg);
+}
+
+.specialistProperty > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.specialistProperty > summary::-webkit-details-marker {
+  display: none;
+}
+
+.specialistProperty[open] .propChevron {
+  transform: rotate(180deg);
+}
+
+.specialistMenu {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px var(--shadow);
+  display: grid;
+  gap: 8px;
+  max-width: min(320px, calc(100vw - 48px));
+  min-width: 220px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+}
+
+.specialistEmpty {
+  color: var(--subtle);
+  font-size: 11px;
 }
 
 .action {
@@ -2201,15 +2247,14 @@ input.textInput {
   padding-top: 20px;
 }
 
-.specialistPicker, .specialistManager {
+.specialistManager {
   margin-top: 18px;
   padding: 16px;
   border: 1px solid var(--vscode-widget-border);
   border-radius: 8px;
 }
-.specialistPicker h3, .specialistManager h3 { margin: 0; }
-.optionalLabel { font-size: 11px; font-weight: 400; opacity: .65; }
-.specialistChoices, .specialistCards { display: grid; gap: 8px; margin-top: 10px; }
+.specialistManager h3 { margin: 0; }
+.specialistCards { display: grid; gap: 8px; margin-top: 10px; }
 .specialistChoice { display: flex; gap: 9px; align-items: flex-start; }
 .specialistChoice span { display: grid; }
 .specialistChoice small { opacity: .7; margin-top: 2px; }
