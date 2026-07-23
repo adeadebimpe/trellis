@@ -50,7 +50,7 @@ export interface ActivityEntry {
 export interface TaskComment {
   id: string;
   author: string;
-  phase: 'human-review' | 'failed-qa';
+  phase: 'human-review' | 'failed-qa' | 'done';
   message: string;
   createdAt: string;
 }

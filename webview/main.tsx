@@ -20,7 +20,7 @@ interface ActivityEntry {
 interface TaskComment {
   id: string;
   author: string;
-  phase: 'human-review' | 'failed-qa';
+  phase: 'human-review' | 'failed-qa' | 'done';
   message: string;
   createdAt: string;
 }
@@ -335,7 +335,7 @@ function App(): JSX.Element {
           setProjectOpen(true);
         }
       }
-      if (event.data.type === 'review-feedback-sent') {
+      if (event.data.type === 'review-feedback-sent' || event.data.type === 'comment-saved') {
         setReviewFeedback('');
         setReviewSubmitting(false);
       }
@@ -1427,19 +1427,27 @@ function App(): JSX.Element {
             activity={[...(draft.activityLog ?? []), ...(draft.qaNotes ?? [])]}
             tab={detailTab}
             onTab={setDetailTab}
-            canComment={draft.status === 'human-review' || draft.status === 'failed-qa'}
+            canComment={draft.status === 'human-review' || draft.status === 'failed-qa' || draft.status === 'done'}
+            sendsToBuilding={draft.status !== 'done'}
             agentAssigned={draft.assignedAgent !== 'unassigned'}
             note={reviewFeedback}
             onNote={setReviewFeedback}
             submitting={reviewSubmitting}
             onSend={() => {
               setReviewSubmitting(true);
-              vscode.postMessage({
-                type: 'request-changes',
-                id: draft.id,
-                feedback: reviewFeedback,
-                expectedLastUpdated: lastKnownUpdatedRef.current
-              });
+              vscode.postMessage(draft.status === 'done'
+                ? {
+                    type: 'add-comment',
+                    id: draft.id,
+                    comment: reviewFeedback,
+                    expectedLastUpdated: lastKnownUpdatedRef.current
+                  }
+                : {
+                    type: 'request-changes',
+                    id: draft.id,
+                    feedback: reviewFeedback,
+                    expectedLastUpdated: lastKnownUpdatedRef.current
+                  });
             }}
           />
           </div>
@@ -1826,6 +1834,7 @@ function ThreadSection({
   tab,
   onTab,
   canComment,
+  sendsToBuilding,
   agentAssigned,
   note,
   onNote,
@@ -1837,6 +1846,7 @@ function ThreadSection({
   tab: 'comments' | 'activity';
   onTab: (tab: 'comments' | 'activity') => void;
   canComment: boolean;
+  sendsToBuilding: boolean;
   agentAssigned: boolean;
   note: string;
   onNote: (value: string) => void;
@@ -1845,7 +1855,7 @@ function ThreadSection({
 }): JSX.Element {
   const sortedActivity = activity.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const ordered = comments.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const sendDisabled = !note.trim() || submitting || !agentAssigned;
+  const sendDisabled = !note.trim() || submitting || (sendsToBuilding && !agentAssigned);
   return (
     <section className="threadSection" aria-label="Comments and activity">
       <div className="tabBar" role="tablist">
@@ -1889,9 +1899,11 @@ function ThreadSection({
                 />
                 <button
                   className="sendBtn"
-                  aria-label="Comment and send to Building"
+                  aria-label={sendsToBuilding ? 'Comment and send to Building' : 'Add comment'}
                   disabled={sendDisabled}
-                  title={!agentAssigned ? 'Assign a build agent before requesting changes.' : 'Sends the note to the build agent and returns the task to Building.'}
+                  title={sendsToBuilding
+                    ? (!agentAssigned ? 'Assign a build agent before requesting changes.' : 'Sends the note to the build agent and returns the task to Building.')
+                    : 'Adds a comment without reopening the task.'}
                   onClick={onSend}
                 >
                   <ArrowUpIcon />
