@@ -1936,36 +1936,6 @@ input.textInput {
   border-color: var(--accent);
 }
 
-.richToolbar {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  gap: 2px;
-  padding: 4px 6px;
-}
-
-.richToolbar button {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  min-height: 26px;
-  padding: 3px 7px;
-}
-
-.richToolbar button:hover {
-  background: var(--badge-bg);
-  color: var(--text);
-}
-
-.richToolbar button[aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--ink-btn-fg);
-}
-
 .richEditorSurface {
   color: var(--body-text);
   line-height: 1.55;

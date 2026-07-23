@@ -1576,7 +1576,6 @@ function RichTextEditor({
   onChange: (html: string, text: string, items: string[]) => void;
 }): JSX.Element {
   const editorRef = useRef<HTMLDivElement | null>(null);
-  const [selectionVersion, setSelectionVersion] = useState(0);
   const rendered = html ? sanitizeRichHtml(html) : textToRichHtml(fallbackText);
 
   useEffect(() => {
@@ -1585,12 +1584,6 @@ function RichTextEditor({
       editor.innerHTML = rendered;
     }
   }, [rendered]);
-
-  useEffect(() => {
-    const update = () => setSelectionVersion((version) => version + 1);
-    document.addEventListener('selectionchange', update);
-    return () => document.removeEventListener('selectionchange', update);
-  }, []);
 
   const emit = () => {
     const editor = editorRef.current;
@@ -1609,21 +1602,10 @@ function RichTextEditor({
     editorRef.current?.focus();
     document.execCommand(command, false, value);
     emit();
-    setSelectionVersion((version) => version + 1);
-  };
-
-  const active = (command: string) => {
-    void selectionVersion;
-    return document.queryCommandState(command);
   };
 
   return (
     <div className="richEditor">
-      <div className="richToolbar" role="toolbar" aria-label={`${ariaLabel} formatting`}>
-        <button type="button" title="Paragraph" aria-label="Paragraph" onMouseDown={(event) => event.preventDefault()} onClick={() => run('formatBlock', 'p')}>¶</button>
-        <button type="button" title="Bulleted list" aria-label="Bulleted list" aria-pressed={active('insertUnorderedList')} onMouseDown={(event) => event.preventDefault()} onClick={() => run('insertUnorderedList')}>• List</button>
-        <button type="button" title="Numbered list" aria-label="Numbered list" aria-pressed={active('insertOrderedList')} onMouseDown={(event) => event.preventDefault()} onClick={() => run('insertOrderedList')}>1. List</button>
-      </div>
       <div
         ref={editorRef}
         className="richEditorSurface"
@@ -1635,6 +1617,21 @@ function RichTextEditor({
         data-placeholder={`Add ${ariaLabel.toLowerCase()}…`}
         onInput={emit}
         onBlur={emit}
+        onKeyDown={(event) => {
+          const primaryModifier = event.metaKey || event.ctrlKey;
+          if (!primaryModifier) return;
+
+          if (event.shiftKey && !event.altKey && (event.code === 'Digit7' || event.key === '7')) {
+            event.preventDefault();
+            run('insertOrderedList');
+          } else if (event.shiftKey && !event.altKey && (event.code === 'Digit8' || event.key === '8')) {
+            event.preventDefault();
+            run('insertUnorderedList');
+          } else if (event.altKey && !event.shiftKey && (event.code === 'Digit0' || event.key === '0')) {
+            event.preventDefault();
+            run('formatBlock', 'p');
+          }
+        }}
         onPaste={(event) => {
           const text = event.clipboardData.getData('text/plain');
           if (text) {
